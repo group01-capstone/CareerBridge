@@ -3,6 +3,7 @@ body {
   margin: 0;
   font-family: sans-serif;
 }
+
 .top-navbar {
   display: flex;
   justify-content: space-between;
@@ -177,6 +178,10 @@ body {
 .forgot-password a:hover {
   text-decoration: underline;
 }
+input[readonly] {
+  background-color: #f8f9fa !important;
+  color: #6c757d !important;
+}
 
 .login-btn {
   background-color: #3bd16f;
@@ -228,7 +233,7 @@ body {
   }
 }
 
-/* SIGNUP PAGE */
+
 /* SIGNUP PAGE */
 .signup-wrapper {
   min-height: 100vh;
@@ -488,3 +493,102 @@ body {
   animation: fadeIn 1.2s ease-in-out;
 }
 
+/* user */
+/* === User Profile Dashboard Layout === */
+.user-profile-wrapper {
+  padding: 40px;
+  background-color: #f8f9fa;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+}
+
+.user-profile-card {
+  text-align: center;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 30px 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: transform 0.3s ease;
+}
+
+.user-profile-card:hover {
+  transform: translateY(-5px);
+}
+
+.user-profile-avatar {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(125, 60, 152, 0.25);
+  margin-bottom: 16px;
+}
+
+.user-profile-card h5 {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.user-profile-card p {
+  margin: 4px 0;
+  color: #555;
+}
+
+.user-profile-card small {
+  color: #888;
+}
+
+.user-profile-stats {
+  display: flex;
+  justify-content: space-around;
+  margin: 16px 0;
+}
+
+.user-profile-stats h6 {
+  margin: 0;
+  font-weight: 600;
+  color: #7d3c98;
+}
+
+/* === Form Panel === */
+.profile-form-section {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 30px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease-in-out;
+}
+
+.profile-form-section .form-label {
+  font-weight: 500;
+  color: #333;
+}
+
+.profile-form-section .form-control {
+  border-radius: 8px;
+  border: 1px solid #ced4da;
+}
+
+.profile-form-section textarea.form-control {
+  resize: vertical;
+}
+
+.profile-form-section .main-btn {
+  margin-top: 10px;
+}
+
+.profile-form-section .btn-light {
+  background-color: #f1f1f1;
+  border: none;
+}
+
+/* === Responsive adjustments === */
+@media (max-width: 768px) {
+  .user-profile-wrapper {
+    padding: 20px;
+  }
+
+  .profile-form-section {
+    padding: 20px;
+  }
+}

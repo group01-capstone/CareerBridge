@@ -26,7 +26,7 @@ const AdminDashboard = () => {
           <NavLink to="/admin/manage-job" className="nav-link">Manage Job</NavLink>
           <NavLink to="/admin/manage-applicants" className="nav-link">Manage Applicants</NavLink>
           <NavLink to="/admin/profile" className="nav-link">Profile</NavLink>
-          <NavLink to="/" className="nav-link">Logout</NavLink>
+          <NavLink to="/logout" className="nav-link">Logout</NavLink>
         </Nav>
       </Navbar>
 

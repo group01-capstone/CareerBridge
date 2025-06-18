@@ -1,3 +1,4 @@
+// API/db.js
 const { MongoClient, ObjectId } = require("mongodb");
 const bcrypt = require("bcrypt");
 
@@ -7,26 +8,25 @@ let db;
 
 // Connect to MongoDB
 async function connectToDB() {
-  if (db) return;
+  if (db) return db;
   try {
     await client.connect();
-    db = client.db("CareerBridge"); // Set your DB name here
+    db = client.db("CareerBridge");
     console.log("Connected to MongoDB:", db.databaseName);
+    return db;
   } catch (error) {
     console.error("DB connection error:", error);
     throw new Error("Failed to connect to DB");
   }
 }
 
-// User Signup
+// Signup User
 async function signupUser({ email, password, name, role }) {
-  if (!db) await connectToDB();
-
+  const db = await connectToDB();
   const existingUser = await db.collection("users").findOne({ email });
   if (existingUser) throw new Error("Email already in use");
 
   const hashedPassword = await bcrypt.hash(password, 10);
-
   const user = {
     email,
     password: hashedPassword,
@@ -37,14 +37,12 @@ async function signupUser({ email, password, name, role }) {
 
   const result = await db.collection("users").insertOne(user);
   if (!result.acknowledged) throw new Error("Failed to create user");
-
   return { _id: result.insertedId, email, name, role };
 }
 
-// User Login
+// Login User
 async function loginUser({ email, password }) {
-  if (!db) await connectToDB();
-
+  const db = await connectToDB();
   const user = await db.collection("users").findOne({ email });
   if (!user) throw new Error("User not found");
 
@@ -54,38 +52,54 @@ async function loginUser({ email, password }) {
   return { _id: user._id, email: user.email, name: user.name, role: user.role };
 }
 
-// Admin Profile Creation
-async function createAdminProfile(input) {
-  if (!db) await connectToDB();
-  const existing = await db.collection("admin_profiles").findOne({ email: input.email });
-  if (existing) throw new Error("Admin profile already exists");
+// Save Admin Profile
+async function saveAdminProfile(input) {
+  const db = await connectToDB();
+  const { email } = input;
+  if (!email) throw new Error("Email is required to save profile");
 
-  const result = await db.collection("admin_profiles").insertOne(input);
-  return await db.collection("admin_profiles").findOne({ _id: result.insertedId });
-}
+  await db.collection("admin_profiles").updateOne(
+    { email },
+    { $set: input },
+    { upsert: true }
+  );
 
-// Admin Profile Update
-async function updateAdminProfile(input) {
-  if (!db) await connectToDB();
-  const existing = await db.collection("admin_profiles").findOne({ email: input.email });
-  if (!existing) throw new Error("Admin profile not found");
-
-  await db.collection("admin_profiles").updateOne({ email: input.email }, { $set: input });
-  return await db.collection("admin_profiles").findOne({ email: input.email });
+  return await db.collection("admin_profiles").findOne({ email });
 }
 
 // Get Admin Profile
 async function getAdminProfile(email) {
-  if (!db) await connectToDB();
+  const db = await connectToDB();
   return await db.collection("admin_profiles").findOne({ email });
 }
 
-// Export functions
+// Save User Profile
+async function saveUserProfile(input) {
+  const db = await connectToDB();
+  const { email } = input;
+  if (!email) throw new Error("Email is required to save user profile");
+
+  await db.collection("user_profiles").updateOne(
+    { email },
+    { $set: input },
+    { upsert: true }
+  );
+
+  return await db.collection("user_profiles").findOne({ email });
+}
+
+// Get User Profile
+async function getUserProfile(email) {
+  const db = await connectToDB();
+  return await db.collection("user_profiles").findOne({ email });
+}
+
 module.exports = {
   connectToDB,
   signupUser,
   loginUser,
-  createAdminProfile,
-  updateAdminProfile,
+  saveAdminProfile,
   getAdminProfile,
+  saveUserProfile,
+  getUserProfile,
 };

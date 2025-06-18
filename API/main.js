@@ -1,18 +1,31 @@
+// API/main.js
 const express = require("express");
 const cors = require("cors");
+const bodyParser = require("body-parser");
+const path = require("path");
+const fs = require("fs");
 require("dotenv").config({ path: "api.env" });
+
+const uploadRoute = require("./upload");
 
 const { ApolloServer, gql } = require("apollo-server-express");
 const {
   connectToDB,
   signupUser,
   loginUser,
-  createAdminProfile,
-  updateAdminProfile,
+  saveAdminProfile,
   getAdminProfile,
+  saveUserProfile,
+  getUserProfile,
 } = require("./db");
 
-// GraphQL schema
+// Ensure uploads folder exists
+const uploadsDir = path.join(__dirname, "..", "public", "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// GraphQL Schema
 const typeDefs = gql`
   type User {
     _id: ID!
@@ -37,6 +50,27 @@ const typeDefs = gql`
     twitter: String
     facebook: String
     instagram: String
+  }
+
+  type UserProfile {
+    _id: ID!
+    firstName: String
+    lastName: String
+    username: String
+    email: String!
+    gender: String
+    status: String
+    mobile: String
+    city: String
+    country: String
+    educationLevel: String
+    customEducation: String
+    customSkills: String
+    customJobs: String
+    linkedin: String
+    github: String
+    resumeFile: String
+    profilePhoto: String
   }
 
   input SignupInput {
@@ -68,16 +102,37 @@ const typeDefs = gql`
     instagram: String
   }
 
+  input UserProfileInput {
+    firstName: String
+    lastName: String
+    username: String
+    email: String!
+    gender: String
+    status: String
+    mobile: String
+    city: String
+    country: String
+    educationLevel: String
+    customEducation: String
+    customSkills: String
+    customJobs: String
+    linkedin: String
+    github: String
+    resumeFile: String
+    profilePhoto: String
+  }
+
   type Query {
     _empty: String
     getAdminProfile(email: String!): AdminProfile
+    getUserProfile(email: String!): UserProfile
   }
 
   type Mutation {
     signup(input: SignupInput!): User!
     login(input: LoginInput!): User!
-    createAdminProfile(input: AdminProfileInput!): AdminProfile!
-    updateAdminProfile(input: AdminProfileInput!): AdminProfile!
+    saveAdminProfile(input: AdminProfileInput!): AdminProfile!
+    saveUserProfile(input: UserProfileInput!): UserProfile!
   }
 `;
 
@@ -90,6 +145,14 @@ const resolvers = {
         return await getAdminProfile(email);
       } catch (err) {
         console.error("GetAdminProfile error:", err.message);
+        throw new Error(err.message);
+      }
+    },
+    getUserProfile: async (_, { email }) => {
+      try {
+        return await getUserProfile(email);
+      } catch (err) {
+        console.error("GetUserProfile error:", err.message);
         throw new Error(err.message);
       }
     },
@@ -111,35 +174,40 @@ const resolvers = {
         throw new Error(err.message);
       }
     },
-    createAdminProfile: async (_, { input }) => {
+    saveAdminProfile: async (_, { input }) => {
       if (!input.email || !input.companyName) {
         throw new Error("Email and company name are required.");
       }
       try {
-        return await createAdminProfile(input);
+        return await saveAdminProfile(input);
       } catch (err) {
-        console.error("CreateAdminProfile error:", err.message);
+        console.error("SaveAdminProfile error:", err.message);
         throw new Error(err.message);
       }
     },
-    updateAdminProfile: async (_, { input }) => {
-      if (!input.email || !input.companyName) {
-        throw new Error("Email and company name are required.");
-      }
+    saveUserProfile: async (_, { input }) => {
+      if (!input.email) throw new Error("Email is required.");
       try {
-        return await updateAdminProfile(input);
+        return await saveUserProfile(input);
       } catch (err) {
-        console.error("UpdateAdminProfile error:", err.message);
+        console.error("SaveUserProfile error:", err.message);
         throw new Error(err.message);
       }
     },
   },
 };
 
-// Start server
+// Start Server
 async function startServer() {
   const app = express();
+
   app.use(cors());
+  app.use(bodyParser.json({ limit: "50mb" }));
+  app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
+
+  // Upload route and static file serving
+  app.use("/upload", uploadRoute);
+  app.use("/uploads", express.static(path.join(__dirname, "..", "public", "uploads")));
 
   const server = new ApolloServer({ typeDefs, resolvers });
   await server.start();

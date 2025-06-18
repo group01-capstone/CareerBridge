@@ -7,7 +7,8 @@ import Home from "./Home.jsx";
 import Login from "./Login.jsx";
 import Signup from "./Signup.jsx";
 import { NavPage } from "./NavPage.jsx";
-
+import UserNavPage from "./UserNavPage.jsx";
+import Logout from "./logout.jsx"; 
 import "bootstrap/dist/css/bootstrap.min.css";
 
 const client = new ApolloClient({
@@ -23,6 +24,8 @@ const App = () => (
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/admin/*" element={<NavPage />} />
+        <Route path="/user/*" element={<UserNavPage />} /> 
+        <Route path="/logout" element={<Logout />} />
       </Routes>
     </Router>
   </ApolloProvider>

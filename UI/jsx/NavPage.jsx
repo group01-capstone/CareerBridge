@@ -5,6 +5,10 @@ import CreateJob from "./CreateJob.jsx";
 import ManageJob from "./ManageJob.jsx";
 import ManageApplicants from "./ManageApplicants.jsx";
 import Profile from "./Profile.jsx";
+import Login from "./Login.jsx";
+
+
+
 
 // Not Found page
 const NotFound = () => <h1>Page Not Found</h1>;
@@ -13,10 +17,11 @@ export function NavPage() {
   return (
     <Routes>
       <Route path="/" element={<AdminDashboard />} />
+      <Route path="login" element={<Login />} />
       <Route path="create-job" element={<CreateJob />} />
       <Route path="manage-job" element={<ManageJob />} />
       <Route path="manage-applicants" element={<ManageApplicants />} />
-      <Route path="profile" element={<Profile />} />
+      <Route path="profile" element={<Profile />} /> 
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
