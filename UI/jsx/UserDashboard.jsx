@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Footer from "./Footer.jsx";
+
 import {
   Container,
   Row,
@@ -37,11 +38,20 @@ const GET_ALL_JOBS = gql`
       mustHave
       benefits
       companyName
+      deadline
     }
   }
 `;
 
-// New query to get user profile including resume and cover letter files
+const SAVE_JOB = gql`
+  mutation SaveJob($userEmail: String!, $jobId: ID!) {
+    saveJob(userEmail: $userEmail, jobId: $jobId) {
+      success
+      message
+    }
+  }
+`;
+
 const GET_USER_PROFILE = gql`
   query GetUserProfile($email: String!) {
     getUserProfile(email: $email) {
@@ -76,22 +86,32 @@ const UserDashboard = () => {
   const { loading, error, data } = useQuery(GET_ALL_JOBS);
 
   // Fetch user profile to get existing resume and cover letter paths
-  const { data: profileData, loading: profileLoading, error: profileError } = useQuery(GET_USER_PROFILE, {
+  const {
+    data: profileData,
+    loading: profileLoading,
+    error: profileError,
+  } = useQuery(GET_USER_PROFILE, {
     variables: { email: userEmail },
     skip: !userEmail,
   });
 
   const [applyForJob] = useMutation(APPLY_FOR_JOB);
+  const [saveJob] = useMutation(SAVE_JOB);
+
   const client = useApolloClient();
 
   const [expandedJobId, setExpandedJobId] = useState(null);
-  const [toast, setToast] = useState({ show: false, message: "", variant: "success" });
+  const [toast, setToast] = useState({
+    show: false,
+    message: "",
+    variant: "success",
+  });
   const [selectedType, setSelectedType] = useState("All");
 
   const [showModal, setShowModal] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
 
-  // Use backend data for existing files:
+  // Existing files
   const [useExistingResume, setUseExistingResume] = useState(false);
   const [useExistingCoverLetter, setUseExistingCoverLetter] = useState(false);
   const [existingResumePath, setExistingResumePath] = useState("");
@@ -100,8 +120,9 @@ const UserDashboard = () => {
   const [resumeFile, setResumeFile] = useState(null);
   const [coverLetterFile, setCoverLetterFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [locationSearchTerm, setLocationSearchTerm] = useState("");
 
-  // Update existing resume and cover letter paths when profile data or modal open changes
   useEffect(() => {
     if (profileData?.getUserProfile) {
       setExistingResumePath(profileData.getUserProfile.resumeFile || "");
@@ -124,7 +145,11 @@ const UserDashboard = () => {
 
   const handleSubmitApplication = async () => {
     if ((!useExistingResume && !resumeFile) || !selectedJob) {
-      setToast({ show: true, message: "Please provide a resume.", variant: "warning" });
+      setToast({
+        show: true,
+        message: "Please provide a resume.",
+        variant: "warning",
+      });
       return;
     }
 
@@ -142,10 +167,13 @@ const UserDashboard = () => {
           formData.append("coverLetter", coverLetterFile);
         }
 
-        const uploadResponse = await fetch("http://localhost:5000/upload/user-dashboard", {
-          method: "POST",
-          body: formData,
-        });
+        const uploadResponse = await fetch(
+          "http://localhost:5000/upload/user-dashboard",
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
 
         if (!uploadResponse.ok) throw new Error("File upload failed");
         const uploadData = await uploadResponse.json();
@@ -156,7 +184,6 @@ const UserDashboard = () => {
         }
       }
 
-      // Submit application mutation with correct file paths
       await applyForJob({
         variables: {
           input: {
@@ -169,7 +196,11 @@ const UserDashboard = () => {
         refetchQueries: ["GetAppliedJobsByUser"],
       });
 
-      setToast({ show: true, message: ` Applied for ${selectedJob.title}`, variant: "success" });
+      setToast({
+        show: true,
+        message: ` Applied for ${selectedJob.title}`,
+        variant: "success",
+      });
     } catch (err) {
       const msg = err.message || "Something went wrong";
       if (msg.includes("User profile not found")) {
@@ -191,19 +222,47 @@ const UserDashboard = () => {
     }
   };
 
-  const handleSave = (title) => {
-    setToast({ show: true, message: `Saved ${title} to your list`, variant: "info" });
+  const handleSave = async (jobId, title) => {
+    try {
+      await saveJob({
+        variables: { userEmail, jobId },
+      });
+      setToast({
+        show: true,
+        message: `Saved ${title} to your list`,
+        variant: "info",
+      });
+    } catch (error) {
+      setToast({
+        show: true,
+        message: `Failed to save ${title}: ${error.message}`,
+        variant: "danger",
+      });
+    }
   };
 
-  const filteredJobs = data?.getAllJobs.filter((job) => {
-    const matchesType = selectedType === "All" || job.type === selectedType;
-    return matchesType;
-  });
+  const filteredJobs =
+    data?.getAllJobs.filter((job) => {
+      const matchesType = selectedType === "All" || job.type === selectedType;
+      const matchesTitle = job.title
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
+      const matchesLocation = job.location
+        .toLowerCase()
+        .includes(locationSearchTerm.toLowerCase());
+      return matchesType && matchesTitle && matchesLocation;
+    }) || [];
 
   return (
     <div className="user-dashboard-wrapper d-flex flex-column min-vh-100">
-      <div className="bg-light flex-grow-1">
-        <Navbar expand="lg" className="top-navbar px-3" bg="light" variant="light" sticky="top">
+      <div className="flex-grow-1">
+        <Navbar
+          expand="lg"
+          className="top-navbar px-3"
+          bg="light"
+          variant="light"
+          sticky="top"
+        >
           <Container fluid>
             <Navbar.Brand>
               <Image src="/images/logo.png" alt="Logo" className="nav-logo" />
@@ -211,49 +270,99 @@ const UserDashboard = () => {
             <Navbar.Toggle aria-controls="admin-navbar-nav" />
             <Navbar.Collapse id="admin-navbar-nav">
               <Nav className="ms-auto nav-links">
-                <NavLink to="/user/home" className="nav-link active">Find Job</NavLink>
-                <NavLink to="/user/my-jobs" className="nav-link">My Jobs</NavLink>
-                <NavLink to="/user/profile" className="nav-link">Profile</NavLink>
-                <NavLink to="/" className="nav-link">Logout</NavLink>
+                <NavLink to="/user/home" className="nav-link active">
+                  Find Job
+                </NavLink>
+                <NavLink to="/user/my-jobs" className="nav-link">
+                  My Jobs
+                </NavLink>
+                <NavLink to="/user/profile" className="nav-link">
+                  Profile
+                </NavLink>
+                <NavLink to="/" className="nav-link">
+                  Logout
+                </NavLink>
               </Nav>
             </Navbar.Collapse>
           </Container>
         </Navbar>
 
-        <Container fluid className="py-5 px-4">
+        <Container fluid className="py-1 px-4">
           <Row className="flex-column flex-lg-row">
+            {/* Filter panel */}
             <Col lg={3} className="mb-4">
               <div className="filter-panel sticky-filter p-4 bg-white rounded shadow-sm">
-                <h5 className="mb-3 text-dark fw-semibold">Filter by Job Type</h5>
-                {["All", "Full-Time", "Part-Time", "Internship", "Contract"].map((type) => (
-                  <Form.Check
-                    key={type}
-                    type="radio"
-                    label={type}
-                    value={type}
-                    checked={selectedType === type}
-                    onChange={() => setSelectedType(type)}
-                    className="mb-2"
+                <Form.Group className="mt-4">
+                  <Form.Label>Search Jobs by Title</Form.Label>
+                  <Form.Control
+                    type="text"
+                    placeholder="Enter job title..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    autoComplete="off"
                   />
-                ))}
+
+                  <Form.Group className="mt-4">
+                    <Form.Label>Search Jobs by Location</Form.Label>
+                    <Form.Control
+                      type="text"
+                      placeholder="Enter location..."
+                      value={locationSearchTerm}
+                      onChange={(e) => setLocationSearchTerm(e.target.value)}
+                      autoComplete="off"
+                    />
+                  </Form.Group>
+                  <br />
+                </Form.Group>
+                <br />
+                <h5 className="mb-3 text-dark fw-semibold">Filter by Job Type</h5>
+                {["All", "Full-Time", "Part-Time", "Internship", "Contract"].map(
+                  (type) => (
+                    <Form.Check
+                      key={type}
+                      type="radio"
+                      label={type}
+                      value={type}
+                      checked={selectedType === type}
+                      onChange={() => setSelectedType(type)}
+                      className="mb-2"
+                    />
+                  )
+                )}
               </div>
             </Col>
 
+            {/* Jobs list */}
             <Col lg={9}>
-              <h2 className="dashboard-title text-center fw-bold mb-4">Explore Jobs</h2>
+              <h2 className="dashboard-title text-center fw-bold mb-4">
+                Explore Jobs
+              </h2>
+
               {loading ? (
-                <div className="text-center"><Spinner animation="border" /></div>
+                <div className="text-center">
+                  <Spinner animation="border" />
+                </div>
               ) : error ? (
-                <p className="text-danger text-center">Error loading jobs: {error.message}</p>
-              ) : filteredJobs?.length === 0 ? (
+                <p className="text-danger text-center">
+                  Error loading jobs: {error.message}
+                </p>
+              ) : filteredJobs.length === 0 ? (
                 <p className="text-center">No matching jobs found.</p>
               ) : (
-                <Row xs={1} sm={1} md={2} lg={2} className="g-4">
+                // ✅ one column until lg, two columns at lg+
+                <Row className="g-4 job-list">
                   {filteredJobs.map((job) => {
                     const isOpen = expandedJobId === job._id;
+                    const deadlinePassed =
+                      job.deadline && new Date(job.deadline) < new Date();
+
                     return (
-                      <Col key={job._id}>
-                        <Card className={`job-card shadow-sm border-0 h-100 ${isOpen ? "border-success bg-light" : ""}`}>
+                      <Col xs={12} lg={6} key={job._id}>
+                        <Card
+                          className={`job-card shadow-sm border-0 h-100 ${
+                            isOpen ? "border-success bg-light" : ""
+                          }`}
+                        >
                           <Card.Body>
                             <div
                               role="button"
@@ -261,34 +370,98 @@ const UserDashboard = () => {
                               className="d-flex justify-content-between align-items-center fw-bold mb-2 job-title"
                             >
                               {job.title}
-                              {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                              {isOpen ? (
+                                <ChevronUp size={20} />
+                              ) : (
+                                <ChevronDown size={20} />
+                              )}
                             </div>
 
-                            <Card.Text><span className="label-text">Company:</span> {job.companyName}</Card.Text>
-                            <Card.Text><span className="label-text">Type:</span> {job.type}</Card.Text>
-                            <Card.Text><span className="label-text">Location:</span> {job.location}</Card.Text>
-                            <Card.Text><span className="label-text">Salary:</span> {job.salary}</Card.Text>
+                            <Card.Text>
+                              <span className="label-text">Company:</span>{" "}
+                              {job.companyName}
+                            </Card.Text>
+                            <Card.Text>
+                              <span className="label-text">Type:</span>{" "}
+                              {job.type}
+                            </Card.Text>
+                            <Card.Text>
+                              <span className="label-text">Location:</span>{" "}
+                              {job.location}
+                            </Card.Text>
+                            <Card.Text>
+                              <span className="label-text">Salary:</span>{" "}
+                              {job.salary}
+                            </Card.Text>
+                            {job.deadline && (
+                              <Card.Text>
+                                <span className="label-text">Deadline:</span>{" "}
+                                {new Date(job.deadline).toLocaleDateString()}
+                              </Card.Text>
+                            )}
 
                             <Collapse in={isOpen}>
                               <div>
                                 <hr />
-                                <p><span className="label-text">Description:</span> {job.description}</p>
-                                <p><span className="label-text">About the Job:</span> {job.aboutJob}</p>
-                                <p><span className="label-text">About You:</span> {job.aboutYou}</p>
-                                <p><span className="label-text">What We Look For:</span> {job.whatWeLookFor}</p>
-                                <p><span className="label-text">Must-Have:</span></p>
+                                <p>
+                                  <span className="label-text">Description:</span>{" "}
+                                  {job.description}
+                                </p>
+                                <p>
+                                  <span className="label-text">About the Job:</span>{" "}
+                                  {job.aboutJob}
+                                </p>
+                                <p>
+                                  <span className="label-text">About You:</span>{" "}
+                                  {job.aboutYou}
+                                </p>
+                                <p>
+                                  <span className="label-text">
+                                    What We Look For:
+                                  </span>{" "}
+                                  {job.whatWeLookFor}
+                                </p>
+                                <p>
+                                  <span className="label-text">Must-Have:</span>
+                                </p>
                                 <ul>
                                   {job.mustHave?.map((item, index) => (
                                     <li key={index}>{item}</li>
                                   ))}
                                 </ul>
-                                <p><span className="label-text">Benefits:</span> {job.benefits}</p>
+                                <p>
+                                  <span className="label-text">Benefits:</span>{" "}
+                                  {job.benefits}
+                                </p>
                               </div>
                             </Collapse>
 
-                            <div className="d-flex justify-content-between mt-3 flex-wrap gap-2">
-                              <Button className="main-btn" size="sm" onClick={() => openApplyModal(job)}>Apply</Button>
-                              <Button className="main-btn" size="sm" onClick={() => handleSave(job.title)}>Save</Button>
+                            <div className="d-flex justify-content-end mt-3 flex-wrap gap-2">
+                              {deadlinePassed ? (
+                                <span className="text-danger fw-semibold">
+                                  No longer Accepting Applications
+                                </span>
+                              ) : (
+                                <>
+                                  <Button
+                                    className="main-btn apply-text m-0"
+                                    size="sm"
+                                    onClick={() => openApplyModal(job)}
+                                    variant="primary"
+                                  >
+                                    Apply
+                                  </Button>
+                                  <Button
+                                    className="main-btn m-0"
+                                    size="sm"
+                                    onClick={() =>
+                                      handleSave(job._id, job.title)
+                                    }
+                                  >
+                                    Save
+                                  </Button>
+                                </>
+                              )}
                             </div>
                           </Card.Body>
                         </Card>
@@ -313,16 +486,19 @@ const UserDashboard = () => {
           </Toast>
         </ToastContainer>
 
-        {}
         <Modal show={showModal} onHide={() => setShowModal(false)} centered>
           <Modal.Header closeButton>
             <Modal.Title>Upload Resume to Apply</Modal.Title>
           </Modal.Header>
           <Modal.Body>
             {profileLoading ? (
-              <div className="text-center"><Spinner animation="border" /></div>
+              <div className="text-center">
+                <Spinner animation="border" />
+              </div>
             ) : profileError ? (
-              <p className="text-danger text-center">Error loading profile data.</p>
+              <p className="text-danger text-center">
+                Error loading profile data.
+              </p>
             ) : (
               <>
                 {/* Use existing resume checkbox */}
@@ -331,7 +507,9 @@ const UserDashboard = () => {
                     type="checkbox"
                     label={
                       existingResumePath
-                        ? `Use existing resume (${existingResumePath.split("/").pop()})`
+                        ? `Use existing resume (${existingResumePath
+                            .split("/")
+                            .pop()})`
                         : "No existing resume found"
                     }
                     checked={useExistingResume}
@@ -360,12 +538,16 @@ const UserDashboard = () => {
                     type="checkbox"
                     label={
                       existingCoverLetterPath
-                        ? `Use existing cover letter (${existingCoverLetterPath.split("/").pop()})`
+                        ? `Use existing cover letter (${existingCoverLetterPath
+                            .split("/")
+                            .pop()})`
                         : "No existing cover letter found"
                     }
                     checked={useExistingCoverLetter}
                     disabled={!existingCoverLetterPath}
-                    onChange={() => setUseExistingCoverLetter(!useExistingCoverLetter)}
+                    onChange={() =>
+                      setUseExistingCoverLetter(!useExistingCoverLetter)
+                    }
                   />
                 </Form.Group>
 
@@ -392,11 +574,16 @@ const UserDashboard = () => {
               disabled={(!useExistingResume && !resumeFile) || isSubmitting}
               onClick={handleSubmitApplication}
             >
-              {isSubmitting ? <Spinner size="sm" animation="border" /> : "Submit Application"}
+              {isSubmitting ? (
+                <Spinner size="sm" animation="border" />
+              ) : (
+                "Submit Application"
+              )}
             </Button>
           </Modal.Footer>
         </Modal>
       </div>
+
       <Footer />
     </div>
   );

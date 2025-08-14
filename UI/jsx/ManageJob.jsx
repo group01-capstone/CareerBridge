@@ -42,10 +42,17 @@ const UPDATE_JOB = gql`
     }
   }
 `;
+const DELETE_JOB = gql`
+  mutation DeleteJob($id: ID!) {
+    deleteJob(id: $id)
+  }
+`;
 
 const ManageJob = () => {
   const { data, loading, error, refetch } = useQuery(GET_ALL_JOBS);
+  
   const [updateJob] = useMutation(UPDATE_JOB);
+  const [deleteJob] = useMutation(DELETE_JOB);
 
   const [selectedJob, setSelectedJob] = useState(null);
   const [formData, setFormData] = useState({ mustHave: [] });
@@ -131,11 +138,26 @@ const ManageJob = () => {
     }
   };
 
+   const handleDelete = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this job?")) return;
+
+    try {
+      await deleteJob({ variables: { id } });
+      setMessage({ type: "success", text: "Job deleted successfully" });
+      refetch();
+    } catch (err) {
+      setMessage({ type: "danger", text: "Delete error: " + err.message });
+    }
+  };
+
+  if (loading) return <p>Loading jobs...</p>;
+  if (error) return <p>Error: {error.message}</p>;
+
   if (loading) return <p>Loading jobs...</p>;
   if (error) return <p>Error: {error.message}</p>;
 
   return (
-    <div className="bg-light min-vh-100">
+    <div className="d-flex flex-column min-vh-100 bg-light">
       {/* Navbar */}
       <Navbar expand="lg" className="top-navbar px-3" bg="light" variant="light" sticky="top">
   <Container fluid>
@@ -180,13 +202,21 @@ const ManageJob = () => {
                 <td>{job.type}</td>
                 <td>{job.deadline}</td>
                 <td>{job.salary}</td>
-                <td>
-                  <Button
+                <td className="d-flex gap-2">
+                   <Button
+                   className="action-btn approve-btn btn-sm"
                     variant="warning"
                     size="sm"
                     onClick={() => handleEditClick(job)}
                   >
                     Edit
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => handleDelete(job._id)}
+                  >
+                    Delete
                   </Button>
                 </td>
               </tr>
@@ -239,7 +269,7 @@ const ManageJob = () => {
               </Form.Group>
 
               <Form.Group className="mb-3">
-                <Form.Label>Deadline</Form.Label>
+                <Form.Label>Application Deadline</Form.Label>
                 <Form.Control
                   type="date"
                   name="deadline"
@@ -317,7 +347,8 @@ const ManageJob = () => {
           </Modal.Footer>
         </Modal>
       </Container>
-      <Footer/>
+      <div className="mt-auto"> <Footer/></div>
+     
     </div>
   );
 };

@@ -8,6 +8,26 @@ import { gql, useMutation, useQuery } from "@apollo/client";
 import "/public/style.css";
 import "bootstrap/dist/css/bootstrap.min.css";
 
+const SERVER_URL = "http://localhost:5000";
+
+/* ================= GraphQL ================= */
+
+const SAVE_USER_PROFILE = gql`
+  mutation SaveUserProfile($input: UserProfileInput!) {
+    saveUserProfile(input: $input) {
+      email
+    }
+  }
+`;
+
+const UPDATE_USER_PROFILE = gql`
+  mutation UpdateUserProfile($input: UserProfileInput!) {
+    updateUserProfile(input: $input) {
+      email
+    }
+  }
+`;
+
 const GET_USER_PROFILE = gql`
   query GetUserProfile($email: String!) {
     getUserProfile(email: $email) {
@@ -29,17 +49,53 @@ const GET_USER_PROFILE = gql`
       profilePhoto
       selfIntroVideo
       coverLetterFile
+      __typename
     }
   }
 `;
 
-const SAVE_USER_PROFILE = gql`
-  mutation SaveUserProfile($input: UserProfileInput!) {
-    saveUserProfile(input: $input) {
-      email
-    }
+/* ============== Helpers / Lookups ============== */
+
+const omitTypename = (val) => {
+  if (Array.isArray(val)) return val.map(omitTypename);
+  if (val && typeof val === "object") {
+    const { __typename, ...rest } = val;
+    for (const k of Object.keys(rest)) rest[k] = omitTypename(rest[k]);
+    return rest;
   }
-`;
+  return val;
+};
+
+async function uploadFile(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch("http://localhost:5000/upload", {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) throw new Error("Upload failed");
+  const data = await response.json();
+  return data.filename;
+}
+
+function lettersOnlyKeyDown(e) {
+  const allowed = ["Backspace", "Tab", "ArrowLeft", "ArrowRight", "Delete", "Home", "End"];
+  const regex = /^[a-zA-Z\s'-]$/;
+  if (!allowed.includes(e.key) && !regex.test(e.key)) e.preventDefault();
+}
+
+function getFilePath(file) {
+  if (!file) return "";
+  const raw = String(file).trim();
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const uploadsMatch = raw.match(/(?:^|\/)uploads\/.+$/i);
+  if (uploadsMatch) {
+    const rel = uploadsMatch[0].replace(/^\/?/, "");
+    return `${SERVER_URL}/${encodeURI(rel)}`;
+  }
+  const base = raw.replace(/^.*[\\/]/, "");
+  return `${SERVER_URL}/uploads/${encodeURIComponent(base)}`;
+}
 
 const educationOptions = [
   "Primary Education (Grades 1–6)",
@@ -89,41 +145,24 @@ const jobMap = {
   "Other": []
 };
 
-async function uploadFile(file) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const response = await fetch("http://localhost:5000/upload", {
-    method: "POST",
-    body: formData,
-  });
-  if (!response.ok) throw new Error("Upload failed");
-  const data = await response.json();
-  return data.filename;
-}
-
-// Block typing anything but letters, space, apostrophe, hyphen in specific inputs
-function lettersOnlyKeyDown(e) {
-  const allowedKeys = [
-    "Backspace", "Tab", "ArrowLeft", "ArrowRight", "Delete", "Home", "End"
-  ];
-  const regex = /^[a-zA-Z\s'-]$/;
-  if (
-    !allowedKeys.includes(e.key) && 
-    !regex.test(e.key)
-  ) {
-    e.preventDefault();
-  }
-}
+/* ================= Component ================= */
 
 export default function UserProfile() {
   const navigate = useNavigate();
-  const [userEmail, setUserEmail] = useState(localStorage.getItem("userEmail") || "");
+  const [userEmail, setUserEmail] = useState((localStorage.getItem("userEmail") || "").trim());
+
   const [formData, setFormData] = useState({
     firstName: "", lastName: "", email: "",
     gender: "", experienceLevel: "", mobile: "", city: "", country: "",
-    educationLevel: "", customEducation: "", customSkills: "", customJobs: "",
-    linkedin: "", github: "", resumeFile: "", profilePhoto: "", selfIntroVideo: "", coverLetterFile: ""
+    educationLevel: "", customEducation: "",
+    customSkills: "",           // will hold selected option OR "Other"
+    customSkillsOther: "",      // free text when "Other"
+    customJobs: "",             // selected option OR "Other"
+    customJobsOther: "",        // free text when "Other"
+    linkedin: "", github: "",
+    resumeFile: "", profilePhoto: "", selfIntroVideo: "", coverLetterFile: ""
   });
+
   const [resumeFile, setResumeFile] = useState(null);
   const [profilePhoto, setProfilePhoto] = useState(null);
   const [introVideo, setIntroVideo] = useState(null);
@@ -136,6 +175,28 @@ export default function UserProfile() {
   });
 
   const [saveUserProfile] = useMutation(SAVE_USER_PROFILE);
+  const [updateUserProfile] = useMutation(UPDATE_USER_PROFILE);
+
+  // Normalize existing values into "Other" buckets when they don't match options
+  const normalizeOtherFields = (profile) => {
+    const edu = profile.educationLevel || "";
+    const allowedSkills = skillsMap[edu] || [];
+    const allowedJobs = jobMap[edu] || [];
+
+    const normalized = { ...profile };
+
+    if (normalized.customSkills && !allowedSkills.includes(normalized.customSkills)) {
+      normalized.customSkillsOther = normalized.customSkills;
+      normalized.customSkills = "Other";
+    }
+
+    if (normalized.customJobs && !allowedJobs.includes(normalized.customJobs)) {
+      normalized.customJobsOther = normalized.customJobs;
+      normalized.customJobs = "Other";
+    }
+
+    return normalized;
+  };
 
   useEffect(() => {
     if (!userEmail) {
@@ -144,14 +205,16 @@ export default function UserProfile() {
       return;
     }
     if (data?.getUserProfile) {
-      setFormData(data.getUserProfile);
+      setFormData(normalizeOtherFields(omitTypename(data.getUserProfile)));
     } else {
       setFormData((prev) => ({ ...prev, email: userEmail }));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, userEmail, navigate]);
 
   const handleChange = (e) => {
     const { name, value, files } = e.target;
+
     if (name === "resumeFile") setResumeFile(files[0]);
     else if (name === "profilePhoto") setProfilePhoto(files[0]);
     else if (name === "selfIntroVideo") setIntroVideo(files[0]);
@@ -165,8 +228,11 @@ export default function UserProfile() {
       ...formData,
       educationLevel: selected,
       customEducation: "",
+      // reset skill/job selections when education changes
       customSkills: "",
-      customJobs: ""
+      customSkillsOther: "",
+      customJobs: "",
+      customJobsOther: ""
     });
   };
 
@@ -178,148 +244,82 @@ export default function UserProfile() {
     const allowedVideoExt = ["mp4", "mov", "avi", "wmv", "flv", "mkv", "webm"];
     const allowedDocExt = ["pdf", "doc", "docx"];
 
-    const getFileExtension = (filename) => {
+    const getExt = (filename) => {
       if (!filename) return "";
       const parts = filename.split(".");
       return parts.length > 1 ? parts.pop().toLowerCase() : "";
     };
 
-    const requiredFields = [
+    const required = [
       "firstName", "lastName", "gender", "mobile",
       "city", "country", "educationLevel",
       "experienceLevel", "linkedin"
     ];
 
-    for (const field of requiredFields) {
-      if (!formData[field] || formData[field].toString().trim() === "") {
-        alert(`Please fill the required field: ${field}`);
+    for (const f of required) {
+      if (!formData[f] || formData[f].toString().trim() === "") {
+        alert(`Please fill the required field: ${f}`);
         return false;
       }
     }
 
-    if (!formData.email) {
-      alert("Email is missing.");
+    if (!formData.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      alert("Email is missing or invalid.");
       return false;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      alert("Email format is invalid.");
-      return false;
-    }
+    if (!lettersOnly.test(formData.firstName)) return alert("First Name should contain letters only."), false;
+    if (!lettersOnly.test(formData.lastName)) return alert("Last Name should contain letters only."), false;
+    if (!lettersOnly.test(formData.city)) return alert("City should contain letters only."), false;
+    if (!lettersOnly.test(formData.country)) return alert("Country should contain letters only."), false;
+    if (!mobilePattern.test(formData.mobile)) return alert("Mobile number is invalid."), false;
 
-    if (!lettersOnly.test(formData.firstName)) {
-      alert("First Name should contain letters only.");
-      return false;
-    }
-    if (!lettersOnly.test(formData.lastName)) {
-      alert("Last Name should contain letters only.");
-      return false;
-    }
-    if (!lettersOnly.test(formData.city)) {
-      alert("City should contain letters only.");
-      return false;
-    }
-    if (!lettersOnly.test(formData.country)) {
-      alert("Country should contain letters only.");
-      return false;
-    }
+    if (!urlPattern.test(formData.linkedin)) return alert("Please enter a valid LinkedIn URL."), false;
+    if (formData.github && formData.github.trim() !== "" && !urlPattern.test(formData.github))
+      return alert("Please enter a valid GitHub URL."), false;
 
-    if (!mobilePattern.test(formData.mobile)) {
-      alert("Mobile number is invalid. It should be 7 to 15 digits, optional leading '+'.");
-      return false;
+    // Require a selected skill/job OR provided "Other" text when "Other" chosen
+    if (!formData.customSkills || (formData.customSkills === "Other" && !formData.customSkillsOther.trim())) {
+      return alert("Please select a skill or provide a custom skill."), false;
     }
-
-    if (!urlPattern.test(formData.linkedin)) {
-      alert("Please enter a valid LinkedIn URL.");
-      return false;
-    }
-    if (formData.github && formData.github.trim() !== "" && !urlPattern.test(formData.github)) {
-      alert("Please enter a valid GitHub URL.");
-      return false;
+    if (!formData.customJobs || (formData.customJobs === "Other" && !formData.customJobsOther.trim())) {
+      return alert("Please select a job or provide a custom job."), false;
     }
 
     if (resumeFile instanceof File) {
-      const ext = getFileExtension(resumeFile.name);
-      if (!allowedDocExt.includes(ext)) {
-        alert("Resume must be a PDF or DOC/DOCX file.");
-        return false;
-      }
+      if (!allowedDocExt.includes(getExt(resumeFile.name))) return alert("Resume must be PDF/DOC/DOCX."), false;
     } else if (formData.resumeFile) {
-      const ext = getFileExtension(formData.resumeFile);
-      if (!allowedDocExt.includes(ext)) {
-        alert("Existing resume file type is invalid. Please upload a valid PDF or DOC/DOCX.");
-        return false;
-      }
-    } else {
-      alert("Please upload your resume.");
-      return false;
-    }
+      if (!allowedDocExt.includes(getExt(formData.resumeFile))) return alert("Existing resume file type invalid."), false;
+    } else return alert("Please upload your resume."), false;
 
     if (coverLetterFile instanceof File) {
-      const ext = getFileExtension(coverLetterFile.name);
-      if (!allowedDocExt.includes(ext)) {
-        alert("Cover Letter must be a PDF or DOC/DOCX file.");
-        return false;
-      }
+      if (!allowedDocExt.includes(getExt(coverLetterFile.name))) return alert("Cover Letter must be PDF/DOC/DOCX."), false;
     } else if (formData.coverLetterFile) {
-      const ext = getFileExtension(formData.coverLetterFile);
-      if (ext && !allowedDocExt.includes(ext)) {
-        alert("Existing cover letter file type is invalid. Please upload a valid PDF or DOC/DOCX.");
-        return false;
-      }
+      const ext = getExt(formData.coverLetterFile);
+      if (ext && !allowedDocExt.includes(ext)) return alert("Existing cover letter file type invalid."), false;
     }
 
     if (profilePhoto instanceof File) {
-      const ext = getFileExtension(profilePhoto.name);
-      if (!allowedProfilePhotoExt.includes(ext)) {
-        alert("Profile Photo must be jpeg, jpg, or png.");
-        return false;
-      }
+      if (!allowedProfilePhotoExt.includes(getExt(profilePhoto.name))) return alert("Profile Photo must be jpeg/jpg/png."), false;
     } else if (formData.profilePhoto) {
-      const ext = getFileExtension(formData.profilePhoto);
-      if (ext && !allowedProfilePhotoExt.includes(ext)) {
-        alert("Existing profile photo file type is invalid. Please upload jpeg, jpg, or png.");
-        return false;
-      }
-    } else {
-      alert("Please upload a profile photo.");
-      return false;
-    }
+      const ext = getExt(formData.profilePhoto);
+      if (ext && !allowedProfilePhotoExt.includes(ext)) return alert("Existing profile photo type invalid."), false;
+    } else return alert("Please upload a profile photo."), false;
 
     if (introVideo instanceof File) {
-      const ext = getFileExtension(introVideo.name);
-      if (!allowedVideoExt.includes(ext)) {
-        alert("Self Introduction Video must be a valid video format (mp4, mov, avi, wmv, flv, mkv, webm).");
-        return false;
-      }
+      if (!allowedVideoExt.includes(getExt(introVideo.name))) return alert("Self Intro Video format invalid."), false;
     } else if (formData.selfIntroVideo) {
-      const ext = getFileExtension(formData.selfIntroVideo);
-      if (ext && !allowedVideoExt.includes(ext)) {
-        alert("Existing self introduction video file type is invalid.");
-        return false;
-      }
+      const ext = getExt(formData.selfIntroVideo);
+      if (ext && !allowedVideoExt.includes(ext)) return alert("Existing self intro video type invalid."), false;
     }
 
-    if (formData.educationLevel === "Other" && (!formData.customEducation || formData.customEducation.trim() === "")) {
-      alert("Please enter custom education details.");
-      return false;
-    }
-
-    if (formData.customSkills === "Other" && (!formData.customSkills || formData.customSkills.trim() === "")) {
-      alert("Please enter a custom skill.");
-      return false;
-    }
-
-    if (formData.customJobs === "Other" && (!formData.customJobs || formData.customJobs.trim() === "")) {
-      alert("Please enter a custom job.");
-      return false;
-    }
+    if (formData.educationLevel === "Other" && (!formData.customEducation || formData.customEducation.trim() === ""))
+      return alert("Please enter custom education details."), false;
 
     return true;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!validateFields()) return;
 
     try {
@@ -333,21 +333,41 @@ export default function UserProfile() {
       if (introVideo instanceof File) video = await uploadFile(introVideo);
       if (coverLetterFile instanceof File) coverLetter = await uploadFile(coverLetterFile);
 
-      const variables = {
-        input: {
-          ...formData,
-          resumeFile: typeof resume === "string" ? resume : "",
-          profilePhoto: typeof photo === "string" ? photo : "",
-          selfIntroVideo: typeof video === "string" ? video : "",
-          coverLetterFile: typeof coverLetter === "string" ? coverLetter : ""
-        }
-      };
+      // If "Other" selected, send the text entered in the *Other* field
+      const normalizedCustomSkills =
+        formData.customSkills === "Other" ? formData.customSkillsOther.trim() : formData.customSkills;
 
-      await saveUserProfile({ variables });
-      alert("Profile saved successfully!");
+      const normalizedCustomJobs =
+        formData.customJobs === "Other" ? formData.customJobsOther.trim() : formData.customJobs;
+
+      const input = omitTypename({
+        ...formData,
+        customSkills: normalizedCustomSkills,
+        customJobs: normalizedCustomJobs,
+        // do not send the helper fields to backend
+        customSkillsOther: undefined,
+        customJobsOther: undefined,
+        resumeFile: typeof resume === "string" ? resume : "",
+        profilePhoto: typeof photo === "string" ? photo : "",
+        selfIntroVideo: typeof video === "string" ? video : "",
+        coverLetterFile: typeof coverLetter === "string" ? coverLetter : ""
+      });
+
+      const isUpdating = !!data?.getUserProfile;
+      if (isUpdating) {
+        await updateUserProfile({ variables: { input } });
+        alert("Profile updated successfully!");
+      } else {
+        await saveUserProfile({ variables: { input } });
+        alert("Profile created successfully!");
+      }
     } catch (err) {
-      console.error(err);
-      alert("Error saving profile: " + err.message);
+      console.error("GraphQL error:", err);
+      const msg =
+        err?.networkError?.result?.errors?.[0]?.message ||
+        err?.message ||
+        "Unknown error";
+      alert("Error saving profile: " + msg);
     }
   };
 
@@ -374,10 +394,9 @@ export default function UserProfile() {
       </Navbar>
 
       <Container className="py-5" style={{ maxWidth: "1100px" }}>
-        <h3 className="dashboard-title text-center fw-bold mb-4 text-primary">User Profile</h3>
+        <h2 className="dashboard-title text-center fw-bold mb-4">User Profile</h2>
         <Card className="p-4 shadow-lg border-0 bg-white rounded">
           <Form onSubmit={handleSubmit} noValidate>
-
             {/* Personal Details */}
             <h5 className="mb-3 text-secondary border-bottom pb-1">Personal Details</h5>
             <Row className="mb-3">
@@ -438,31 +457,20 @@ export default function UserProfile() {
               </Col>
               <Col md={4}>
                 <Form.Group controlId="mobile">
-  <Form.Label className="fw-semibold">Mobile *</Form.Label>
-  <Form.Control
-    name="mobile"
-    value={formData.mobile}
-    onChange={handleChange}
-    placeholder="Enter your mobile number"
-    type="tel"
-    inputMode="numeric"
-    pattern="\d{7,15}"
-    title="Enter a valid phone number (only digits allowed)"
-    onKeyDown={(e) => {
-      const allowedKeys = [
-        "Backspace", "Tab", "ArrowLeft", "ArrowRight", "Delete", "Home", "End"
-      ];
-      if (
-        !allowedKeys.includes(e.key) &&
-        !/^[0-9]$/.test(e.key)
-      ) {
-        e.preventDefault();
-      }
-    }}
-  />
-</Form.Group>
-
-
+                  <Form.Label className="fw-semibold">Mobile *</Form.Label>
+                  <Form.Control
+                    name="mobile"
+                    value={formData.mobile}
+                    onChange={handleChange}
+                    placeholder="Enter your mobile number"
+                    type="tel"
+                    inputMode="numeric"
+                    onKeyDown={(e) => {
+                      const allowed = ["Backspace", "Tab", "ArrowLeft", "ArrowRight", "Delete", "Home", "End"];
+                      if (!allowed.includes(e.key) && !/^[0-9+]$/.test(e.key)) e.preventDefault();
+                    }}
+                  />
+                </Form.Group>
               </Col>
               <Col md={4}>
                 <Form.Group controlId="city">
@@ -491,8 +499,10 @@ export default function UserProfile() {
                   />
                 </Form.Group>
               </Col>
+
               <h5 className="mb-3 text-secondary border-bottom pb-1">Education & Experience</h5>
-            <Row className="mb-3"></Row>
+              <Row className="mb-3"></Row>
+
               <Col md={4}>
                 <Form.Group controlId="experienceLevel">
                   <Form.Label className="fw-semibold">Experience Level *</Form.Label>
@@ -508,6 +518,7 @@ export default function UserProfile() {
                   </Form.Select>
                 </Form.Group>
               </Col>
+
               <Col md={4}>
                 <Form.Group controlId="educationLevel">
                   <Form.Label className="fw-semibold">Education Level *</Form.Label>
@@ -542,37 +553,43 @@ export default function UserProfile() {
                     onChange={handleChange}
                   >
                     <option value="">Select Skill</option>
-                    {skillsOptions.map((s, i) => <option key={i} value={s}>{s}</option>)}
+                    {(skillsMap[formData.educationLevel] || []).map((s, i) => (
+                      <option key={i} value={s}>{s}</option>
+                    ))}
                     <option value="Other">Other</option>
                   </Form.Select>
+
                   {formData.customSkills === "Other" && (
                     <Form.Control
                       className="mt-2"
-                      name="customSkills"
+                      name="customSkillsOther"
                       placeholder="Enter custom skill"
-                      value={formData.customSkills}
+                      value={formData.customSkillsOther}
                       onChange={handleChange}
                     />
                   )}
                 </Form.Group>
 
                 <Form.Group controlId="customJobs" className="mb-3">
-                  <Form.Label className="fw-semibold">Preffered Jobs *</Form.Label>
+                  <Form.Label className="fw-semibold">Preferred Jobs *</Form.Label>
                   <Form.Select
                     name="customJobs"
                     value={formData.customJobs}
                     onChange={handleChange}
                   >
                     <option value="">Select Job</option>
-                    {jobOptions.map((j, i) => <option key={i} value={j}>{j}</option>)}
+                    {(jobMap[formData.educationLevel] || []).map((j, i) => (
+                      <option key={i} value={j}>{j}</option>
+                    ))}
                     <option value="Other">Other</option>
                   </Form.Select>
+
                   {formData.customJobs === "Other" && (
                     <Form.Control
                       className="mt-2"
-                      name="customJobs"
+                      name="customJobsOther"
                       placeholder="Enter custom job"
-                      value={formData.customJobs}
+                      value={formData.customJobsOther}
                       onChange={handleChange}
                     />
                   )}
@@ -611,6 +628,7 @@ export default function UserProfile() {
 
             {/* Uploads */}
             <h5 className="mb-3 text-secondary border-bottom pb-1 mt-4">Uploads</h5>
+
             <Form.Group controlId="resumeFile" className="mb-3">
               <Form.Label className="fw-semibold">Upload Resume (PDF, DOC, DOCX) *</Form.Label>
               <Form.Control
@@ -619,6 +637,11 @@ export default function UserProfile() {
                 accept=".pdf,.doc,.docx"
                 onChange={handleChange}
               />
+              {formData.resumeFile && typeof formData.resumeFile === "string" && (
+                <div className="mt-2">
+                  <a href={getFilePath(formData.resumeFile)} target="_blank" rel="noreferrer">View Uploaded Resume</a>
+                </div>
+              )}
             </Form.Group>
 
             <Form.Group controlId="coverLetterFile" className="mb-3">
@@ -629,6 +652,11 @@ export default function UserProfile() {
                 accept=".pdf,.doc,.docx"
                 onChange={handleChange}
               />
+              {formData.coverLetterFile && typeof formData.coverLetterFile === "string" && (
+                <div className="mt-2">
+                  <a href={getFilePath(formData.coverLetterFile)} target="_blank" rel="noreferrer">View Uploaded Cover Letter</a>
+                </div>
+              )}
             </Form.Group>
 
             <Form.Group controlId="profilePhoto" className="mb-3">
@@ -639,6 +667,15 @@ export default function UserProfile() {
                 accept="image/jpeg,image/jpg,image/png"
                 onChange={handleChange}
               />
+              {formData.profilePhoto && typeof formData.profilePhoto === "string" && (
+                <div className="mt-2">
+                  <img
+                    src={getFilePath(formData.profilePhoto)}
+                    alt="Profile"
+                    style={{ maxWidth: "150px", borderRadius: "8px", border: "1px solid #ddd" }}
+                  />
+                </div>
+              )}
             </Form.Group>
 
             <Form.Group controlId="selfIntroVideo" className="mb-3">
@@ -649,6 +686,17 @@ export default function UserProfile() {
                 accept="video/mp4,video/avi,video/mov,video/wmv,video/flv,video/mkv,video/webm"
                 onChange={handleChange}
               />
+              {formData.selfIntroVideo && typeof formData.selfIntroVideo === "string" && (
+                <div className="mt-3">
+                  <video
+                    src={getFilePath(formData.selfIntroVideo)}
+                    controls
+                    style={{ maxWidth: "100%", maxHeight: "300px" }}
+                  >
+                    Your browser does not support the video tag.
+                  </video>
+                </div>
+              )}
             </Form.Group>
 
             <div className="text-center mt-4">

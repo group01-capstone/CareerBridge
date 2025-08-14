@@ -39,6 +39,31 @@ async function signupUser({ email, password, name, role }) {
   return { _id: result.insertedId, email, name, role };
 }
 
+// Reset User Password
+async function resetUserPassword(email, newPassword) {
+  const db = await connectToDB();
+
+  const user = await db.collection("users").findOne({ email });
+  if (!user) {
+    return { success: false, message: "Email not found in our system." };
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  const result = await db.collection("users").updateOne(
+    { email },
+    { $set: { password: hashedPassword } }
+  );
+
+  if (result.modifiedCount === 0) {
+    return { success: false, message: "New password must be different from the old password." };
+  }
+
+  return { success: true, message: "Password updated successfully" };
+}
+
+
+
 // Login User
 async function loginUser({ email, password }) {
   const db = await connectToDB();
@@ -188,6 +213,32 @@ async function applyForJob({ userEmail, jobId, resume, coverLetter }) {
 
 // Get applicants for a job
 
+// async function getApplicantsByJobId(jobId) {
+//   const db = await connectToDB();
+
+//   const applicants = await db.collection("applications")
+//     .find({ jobId: new ObjectId(jobId) })
+//     .project({
+//       userEmail: 1,
+//       resumeFile: 1,          
+//       coverLetterFile: 1,    
+//       userProfile: {
+//         firstName: 1,
+//         lastName: 1,
+//         email: 1,
+//         mobile: 1,
+//         city: 1,
+//         country: 1,
+//         educationLevel: 1,
+//       },
+//       appliedAt: 1,
+//       status: 1,
+//     })
+//     .toArray();
+
+//   return applicants;
+// }
+
 async function getApplicantsByJobId(jobId) {
   const db = await connectToDB();
 
@@ -195,17 +246,17 @@ async function getApplicantsByJobId(jobId) {
     .find({ jobId: new ObjectId(jobId) })
     .project({
       userEmail: 1,
-      resumeFile: 1,          
-      coverLetterFile: 1,    
-      userProfile: {
-        firstName: 1,
-        lastName: 1,
-        email: 1,
-        mobile: 1,
-        city: 1,
-        country: 1,
-        educationLevel: 1,
-      },
+      resumeFile: 1,
+      coverLetterFile: 1,
+      "userProfile.firstName": 1,
+      "userProfile.lastName": 1,
+      "userProfile.email": 1,
+      "userProfile.mobile": 1,
+      "userProfile.city": 1,
+      "userProfile.country": 1,
+      "userProfile.educationLevel": 1,
+      "userProfile.profilePhoto": 1,
+      "userProfile.selfIntroVideo": 1,
       appliedAt: 1,
       status: 1,
     })
@@ -213,6 +264,7 @@ async function getApplicantsByJobId(jobId) {
 
   return applicants;
 }
+
 
 // Get jobs a user has applied for
 async function getAppliedJobsByUser(userEmail) {
@@ -229,6 +281,39 @@ async function getAppliedJobsByUser(userEmail) {
 
   return jobs;
 }
+
+// Save a job for a user
+async function saveJob(userEmail, jobId) {
+  const db = await connectToDB();
+  const jobObjectId = new ObjectId(jobId);
+
+  const existing = await db.collection("savedJobs").findOne({ userEmail, jobId: jobObjectId });
+  if (existing) {
+    return { success: false, message: "Job already saved." };
+  }
+
+  await db.collection("savedJobs").insertOne({
+    userEmail,
+    jobId: jobObjectId,
+    savedAt: new Date(),
+  });
+
+  return { success: true, message: "Job saved successfully." };
+}
+
+// Get all saved jobs for a user
+async function getSavedJobsByUser(userEmail) {
+  const db = await connectToDB();
+
+  const saved = await db.collection("savedJobs").find({ userEmail }).toArray();
+  const jobIds = saved.map((entry) => entry.jobId);
+
+  if (!jobIds.length) return [];
+
+  const jobs = await db.collection("jobs").find({ _id: { $in: jobIds } }).toArray();
+  return jobs;
+}
+
 
 // Update applicant status
 async function updateApplicantStatus(applicantId, status) {
@@ -254,5 +339,8 @@ module.exports = {
   applyForJob,
   getApplicantsByJobId,
   getAppliedJobsByUser,
-  updateApplicantStatus
+  updateApplicantStatus,
+  saveJob,                 
+  getSavedJobsByUser ,
+  resetUserPassword
 };

@@ -14,6 +14,29 @@ import {
   Button,
 } from "react-bootstrap";
 
+const SERVER_URL = "http://localhost:5000";
+
+/* ========= Helpers ========= */
+const buildFileURL = (path) => {
+  if (!path) return "";
+  const raw = String(path).trim();
+
+  // already absolute
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  // keep only uploads/user_uploads part if present
+  const match = raw.match(/(?:^|\/)(uploads|user_uploads)\/.+$/i);
+  if (match) {
+    const rel = match[0].replace(/^\/?/, "");
+    return `${SERVER_URL}/${encodeURI(rel)}`;
+  }
+
+  // otherwise assume filename in /uploads
+  const base = raw.replace(/^.*[\\/]/, "");
+  return `${SERVER_URL}/uploads/${encodeURIComponent(base)}`;
+};
+
+/* ========= GraphQL ========= */
 const GET_ALL_JOBS = gql`
   query {
     getAllJobs {
@@ -38,6 +61,8 @@ const GET_APPLICANTS = gql`
         city
         country
         educationLevel
+        profilePhoto
+        selfIntroVideo
       }
       appliedAt
       status
@@ -83,31 +108,24 @@ const ManageApplicants = () => {
     }
   };
 
-  // Helper to safely parse and format appliedAt date
+  // Safe date formatting
   const formatAppliedDate = (appliedAt) => {
     if (!appliedAt) return "N/A";
-
-    // Handle MongoDB extended JSON format if needed
-    let dateValue = appliedAt;
-    if (typeof appliedAt === "object" && appliedAt !== null && "$date" in appliedAt) {
+    let dateValue;
+    if (typeof appliedAt === "string" || typeof appliedAt === "number") {
+      dateValue = appliedAt;
+    } else if (typeof appliedAt === "object" && appliedAt.$date) {
       dateValue = appliedAt.$date;
+    } else {
+      return "Invalid Date";
     }
-
-    const date = new Date(dateValue);
-    if (isNaN(date.getTime())) return "Invalid Date";
-
-    return `${date.toLocaleDateString("en-US", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    })}, ${date.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-    })}`;
+    const d = new Date(dateValue);
+    if (isNaN(d.getTime())) return "Invalid Date";
+    return `${d.toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" })}, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
   };
 
   return (
-    <div className="bg-light min-vh-100">
+   <div className="d-flex flex-column min-vh-100 bg-light">
       <Navbar expand="lg" className="top-navbar px-3" bg="light" variant="light" sticky="top">
         <Container fluid>
           <Navbar.Brand>
@@ -127,7 +145,7 @@ const ManageApplicants = () => {
         </Container>
       </Navbar>
 
-      <Container className="py-5">
+      <Container className="py-4 flex-grow-1">
         <h3 className="dashboard-title text-center fw-bold mb-4">Manage Applicants</h3>
 
         {jobsLoading && <Spinner animation="border" />}
@@ -155,6 +173,7 @@ const ManageApplicants = () => {
                         <thead>
                           <tr>
                             <th>#</th>
+                            <th>Photo</th>
                             <th>Name</th>
                             <th>Email</th>
                             <th>Mobile</th>
@@ -163,6 +182,7 @@ const ManageApplicants = () => {
                             <th>Education</th>
                             <th>Resume</th>
                             <th>Cover Letter</th>
+                            <th>Intro Video</th>
                             <th>Applied At</th>
                             <th>Status</th>
                             <th>Actions</th>
@@ -179,69 +199,77 @@ const ManageApplicants = () => {
                               coverLetterFile,
                             } = applicant;
 
-                            
-function encodeFileName(filePath) {
-  if (!filePath) return "";
-
-  
-  const parts = filePath.split("/");
-
- 
-  const fileName = encodeURIComponent(parts.pop());
-
-  
-  const folderPath = parts.join("/");
-
-  return folderPath + "/" + fileName;
-}
-
-
-const SERVER_URL = "http://localhost:5000"; 
-
-const resumePath = resumeFile?.startsWith("/uploads/") || resumeFile?.startsWith("/user_uploads/")
-  ? `${SERVER_URL}${encodeURI(resumeFile)}`
-  : `${SERVER_URL}/user_uploads/${encodeURIComponent(resumeFile)}`;
-
-const coverLetterPath = coverLetterFile?.startsWith("/uploads/") || coverLetterFile?.startsWith("/user_uploads/")
-  ? `${SERVER_URL}${encodeURI(coverLetterFile)}`
-  : `${SERVER_URL}/user_uploads/${encodeURIComponent(coverLetterFile)}`;
-
-
                             const isUpdating = updating[_id];
                             const isDecisionMade = status.toLowerCase() !== "pending";
+
+                            const resumeURL = buildFileURL(resumeFile);
+                            const coverURL = buildFileURL(coverLetterFile);
+                            const photoURL = buildFileURL(userProfile?.profilePhoto);
+                            const videoURL = buildFileURL(userProfile?.selfIntroVideo);
+
+                            const fullName = userProfile
+                              ? `${userProfile.firstName || ""} ${userProfile.lastName || ""}`.trim() || "N/A"
+                              : "N/A";
 
                             return (
                               <tr key={_id}>
                                 <td>{i + 1}</td>
-                                <td>
-                                  {userProfile
-                                    ? `${userProfile.firstName || ""} ${userProfile.lastName || ""}`
-                                    : "N/A"}
+
+                                {/* Profile Photo */}
+                                <td style={{ width: 80, textAlign: "center" }}>
+                                  {photoURL ? (
+                                    <img
+                                      src={photoURL}
+                                      alt="Profile"
+                                      style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 8 }}
+                                    />
+                                  ) : (
+                                    "N/A"
+                                  )}
                                 </td>
+
+                                <td>{fullName}</td>
                                 <td>{userProfile?.email || "N/A"}</td>
                                 <td>{userProfile?.mobile || "N/A"}</td>
                                 <td>{userProfile?.city || "N/A"}</td>
                                 <td>{userProfile?.country || "N/A"}</td>
                                 <td>{userProfile?.educationLevel || "N/A"}</td>
+
                                 <td>
-                                  {resumeFile ? (
-                                    <a href={resumePath} target="_blank" rel="noopener noreferrer">
+                                  {resumeURL ? (
+                                    <a href={resumeURL} target="_blank" rel="noopener noreferrer">
                                       View
                                     </a>
                                   ) : (
                                     "N/A"
                                   )}
                                 </td>
+
                                 <td>
-                                  {coverLetterFile ? (
-                                    <a href={coverLetterPath} target="_blank" rel="noopener noreferrer">
+                                  {coverURL ? (
+                                    <a href={coverURL} target="_blank" rel="noopener noreferrer">
                                       View
                                     </a>
                                   ) : (
                                     "N/A"
                                   )}
                                 </td>
+
+                                {/* Intro Video */}
+                                <td style={{ minWidth: 180 }}>
+                                  {videoURL ? (
+                                    <video
+                                      src={videoURL}
+                                      controls
+                                      style={{ width: 160, maxHeight: 120 }}
+                                    />
+                                  ) : (
+                                    "N/A"
+                                  )}
+                                </td>
+
                                 <td>{formatAppliedDate(appliedAt)}</td>
+
                                 <td
                                   className={`fw-bold ${
                                     status.toLowerCase() === "accepted"
@@ -253,29 +281,28 @@ const coverLetterPath = coverLetterFile?.startsWith("/uploads/") || coverLetterF
                                 >
                                   {status}
                                 </td>
+
                                 <td>
-                                  <Button
-                                    className="main-btn me-2"
-                                    variant="success"
-                                    size="sm"
-                                    disabled={isDecisionMade || isUpdating}
-                                    onClick={() => handleStatusChange(_id, "Accepted")}
-                                  >
-                                    {isUpdating && status.toLowerCase() !== "accepted"
-                                      ? "Approving..."
-                                      : "Approve"}
-                                  </Button>
-                                  <Button
-                                  className="main-btn me-2"
-                                    variant="danger"
-                                    size="sm"
-                                    disabled={isDecisionMade || isUpdating}
-                                    onClick={() => handleStatusChange(_id, "Rejected")}
-                                  >
-                                    {isUpdating && status.toLowerCase() !== "rejected"
-                                      ? "Rejecting..."
-                                      : "Reject"}
-                                  </Button>
+                                  <div className="d-flex gap-2">
+                                    <Button
+                                      className="action-btn approve-btn btn-sm"
+                                      disabled={isDecisionMade || isUpdating}
+                                      onClick={() => handleStatusChange(_id, "Accepted")}
+                                    >
+                                      {isUpdating && status.toLowerCase() !== "accepted"
+                                        ? "Approving..."
+                                        : "Approve"}
+                                    </Button>
+                                    <Button
+                                      className="action-btn reject-btn btn-sm"
+                                      disabled={isDecisionMade || isUpdating}
+                                      onClick={() => handleStatusChange(_id, "Rejected")}
+                                    >
+                                      {isUpdating && status.toLowerCase() !== "rejected"
+                                        ? "Rejecting..."
+                                        : "Reject"}
+                                    </Button>
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -291,7 +318,9 @@ const coverLetterPath = coverLetterFile?.startsWith("/uploads/") || coverLetterF
         </Accordion>
       </Container>
 
-      <Footer />
+       <div className="mt-auto">
+        <Footer />
+      </div>
     </div>
   );
 };

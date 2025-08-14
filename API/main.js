@@ -6,7 +6,12 @@ require("dotenv").config({ path: "api.env" });
 const express = require("express");
 const uploadRoute = require("./upload");
 const { ApolloServer, gql } = require("apollo-server-express");
-const app = express();
+const { ApolloServerPluginLandingPageGraphQLPlayground } = require("apollo-server-core");
+
+
+
+
+
 
 
 const {
@@ -23,6 +28,9 @@ const {
   getAppliedJobsByUser,
   updateJob,
   updateApplicantStatus,
+  saveJob,
+
+  getSavedJobsByUser
 } = require("./db");
 
 const { ObjectId } = require("mongodb");
@@ -118,6 +126,18 @@ type Applicant {
   coverLetterFile: String
 }
 
+type DashboardStats {
+  totalJobs: Int!
+  totalUsers: Int!
+  pendingApplications: Int!
+}
+
+ type ResponseMessage {
+    success: Boolean!
+    message: String!
+  }
+
+
 
   input SignupInput {
     email: String!
@@ -200,6 +220,8 @@ type Applicant {
     
     # No schema change here - return list of Jobs with embedded application info
     getAppliedJobsByUser(userEmail: String!): [Job!]!
+     getSavedJobsByUser(userEmail: String!): [Job!]! 
+      getDashboardStats: DashboardStats!
   }
 
   type Mutation {
@@ -211,7 +233,22 @@ type Applicant {
     applyForJob(input: ApplyJobInput!): Applicant!
     updateJob(id: ID!, input: JobInput!): Job!
     updateApplicantStatus(applicantId: ID!, status: String!): Applicant!
+    saveJob(userEmail: String!, jobId: ID!): SaveJobResponse!
+    deleteSavedJob(userEmail: String!, jobId: ID!): Boolean!
+    deleteJob(id: ID!): Boolean!
+    changePassword(email: String!, newPassword: String!): ResponseMessage!
+    updateUserProfile(input: UserProfileInput!): UserProfile!
+
+
+    
+
   }
+
+   type SaveJobResponse {       # ✅ NEW
+    success: Boolean!
+    message: String
+  }
+
 `;
 
 // Resolvers
@@ -247,15 +284,34 @@ const resolvers = {
         throw new Error("Failed to fetch job details");
       }
     },
-    getApplicants: async (_, { jobId }) => {
-      try {
+    // getApplicants: async (_, { jobId }) => {
+    //   try {
        
-        return await getApplicantsByJobId(jobId);
-      } catch (err) {
-        console.error("getApplicants error:", err.message);
-        throw new Error(err.message);
-      }
-    },
+    //     return await getApplicantsByJobId(jobId);
+    //   } catch (err) {
+    //     console.error("getApplicants error:", err.message);
+    //     throw new Error(err.message);
+    //   }
+    // },
+
+    getApplicants: async (_, { jobId }) => {
+  try {
+    const rawApplicants = await getApplicantsByJobId(jobId);
+
+    const formattedApplicants = rawApplicants.map(applicant => ({
+      ...applicant,
+      appliedAt: applicant.appliedAt
+        ? new Date(applicant.appliedAt).toISOString()
+        : null,
+    }));
+
+    return formattedApplicants;
+  } catch (err) {
+    console.error("getApplicants error:", err.message);
+    throw new Error(err.message);
+  }
+},
+
 
     // UPDATED resolver to join jobs and user's applications with status
     getAppliedJobsByUser: async (_, { userEmail }) => {
@@ -297,7 +353,60 @@ const resolvers = {
         throw new Error(err.message);
       }
     },
+
+      getSavedJobsByUser: async (_, { userEmail }) => {
+  try {
+    const db = await connectToDB();
+    const saved = await db
+      .collection("savedJobs")
+      .find({ userEmail })
+      .toArray();
+
+    const jobIds = saved.map((entry) => entry.jobId);
+
+    if (!jobIds.length) return [];
+
+    const jobs = await db
+      .collection("jobs")
+      .find({ _id: { $in: jobIds } })
+      .toArray();
+
+    return jobs;
+  } catch (err) {
+    console.error("getSavedJobsByUser error:", err.message);
+    throw new Error("Failed to fetch saved jobs.");
+  }
+},
+
+getDashboardStats: async () => {
+  try {
+    const db = await connectToDB();
+
+    const totalJobs = await db.collection("jobs").countDocuments();
+    const totalUsers = await db.collection("users").countDocuments();
+    const pendingApplications = await db
+      .collection("applications")
+      .countDocuments({ status: "Pending" });
+
+    return {
+      totalJobs,
+      totalUsers,
+      pendingApplications,
+    };
+  } catch (err) {
+    console.error("getDashboardStats error:", err.message);
+    throw new Error("Failed to fetch dashboard stats.");
+  }
+},
+
+
+
+
+
+
   },
+
+
 
   Mutation: {
     signup: async (_, { input }) => {
@@ -335,7 +444,21 @@ const resolvers = {
         console.error("SaveUserProfile error:", err.message);
         throw new Error("SaveUserProfile failed: " + err.message);
       }
-    },
+
+      },
+
+      // ✅ add to Mutation
+updateUserProfile: async (_, { input }) => {
+  if (!input.email) throw new Error("Email is required.");
+  try {
+    // reuse upsert logic
+    return await saveUserProfile(input);
+  } catch (err) {
+    console.error("UpdateUserProfile error:", err.message);
+    throw new Error("UpdateUserProfile failed: " + err.message);
+  }
+},
+
     createJob: async (_, { input }) => {
       try {
         console.log(" Received input for createJob:", input);
@@ -369,19 +492,118 @@ const resolvers = {
         throw new Error(err.message);
       }
     },
-  },
-};
+  
+
+  saveJob: async (_, { userEmail, jobId }) => {
+  try {
+    const db = await connectToDB();
+    const jobObjectId = new ObjectId(jobId);
+
+    const existing = await db
+      .collection("savedJobs")
+      .findOne({ userEmail, jobId: jobObjectId });
+
+    if (existing) {
+      return { success: false, message: "Job already saved." };
+    }
+
+    await db.collection("savedJobs").insertOne({
+      userEmail,
+      jobId: jobObjectId,
+      savedAt: new Date(),
+    });
+
+    return { success: true, message: "Job saved successfully." };
+  } catch (err) {
+    console.error("saveJob error:", err.message);
+    throw new Error("Failed to save job.");
+  }
+},
+
+deleteSavedJob: async (_, { userEmail, jobId }) => {
+  try {
+    const db = await connectToDB();
+    const jobObjectId = new ObjectId(jobId);
+
+    const result = await db.collection("savedJobs").deleteOne({ userEmail, jobId: jobObjectId });
+
+    // return true if a document was deleted, false otherwise
+    return result.deletedCount > 0;
+  } catch (err) {
+    console.error("deleteSavedJob error:", err.message);
+    throw new Error("Failed to delete saved job.");
+  }
+},
+
+    deleteJob: async (_, { id }) => {
+      try {
+        const db = await connectToDB();
+        const result = await db.collection("jobs").deleteOne({ _id: new ObjectId(id) });
+        return result.deletedCount > 0; // true if deleted successfully
+      } catch (err) {
+        console.error("deleteJob error:", err.message);
+        throw new Error("Failed to delete job.");
+      }
+    },
+
+    
+   changePassword: async (_, { email, newPassword }) => {
+  const bcrypt = require("bcrypt");
+  const saltRounds = 10;
+  const db = await connectToDB();
+
+  try {
+    const user = await db.collection("users").findOne({ email });
+    if (!user) {
+      return { success: false, message: "User with this email does not exist." };
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    const result = await db.collection("users").updateOne(
+      { email },
+      { $set: { password: hashedPassword } }
+    );
+
+    if (result.modifiedCount === 1) {
+      return { success: true, message: "Password changed successfully." };
+    } else {
+      return { success: false, message: "Failed to change password. Try again." };
+    }
+  } catch (error) {
+    console.error("changePassword error:", error);
+    return { success: false, message: "Error changing password." };
+  }
+}
+
+  }
+
+  };
+
+
+  
 
 // Start Express Server
 async function startServer() {
   const app = express();
 
-  app.use(cors());
+  // app.use(cors());
+    app.use(
+    cors({
+      origin: "http://localhost:3000",
+      credentials: true,
+    })
+  );
+
   app.use(bodyParser.json({ limit: "50mb" }));
   app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
 
   app.use("/upload", uploadRoute);
   app.use("/uploads", express.static(path.join(__dirname,  "..", "public", "uploads")));
+  
+//   app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// app.use("/user_uploads", express.static(path.join(__dirname, "user_uploads")));
+
 
 
 
@@ -389,9 +611,32 @@ app.use("/user_uploads", express.static(path.join(__dirname,"..", "public", "use
 
  
 
-  const server = new ApolloServer({ typeDefs, resolvers });
-  await server.start();
-  server.applyMiddleware({ app, path: "/graphql" });
+  // const server = new ApolloServer({ typeDefs, resolvers });
+  // await server.start();
+
+
+// ...
+const server = new ApolloServer({
+  typeDefs,
+  resolvers,
+  plugins: [ApolloServerPluginLandingPageGraphQLPlayground()],
+});
+await server.start();
+
+  app.options("/graphql", cors({ origin: "http://localhost:3000", credentials: true }));
+  app.post("/graphql", (req, res, next) => {
+  try {
+   
+  } catch {}
+  next();
+});
+
+  // server.applyMiddleware({ app, path: "/graphql" });
+  server.applyMiddleware({
+    app,
+    path: "/graphql",
+    cors: false,
+  });
 
   await connectToDB();
 

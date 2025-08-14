@@ -6,6 +6,9 @@ import ManageJob from "./ManageJob.jsx";
 import ManageApplicants from "./ManageApplicants.jsx";
 import Profile from "./Profile.jsx";
 import Login from "./Login.jsx";
+import ForgetPassword from "./ForgetPassword.jsx";
+import ResetPassword from "./ResetPassword.jsx";
+
 
 
 
@@ -23,6 +26,8 @@ export function NavPage() {
       <Route path="manage-job" element={<ManageJob />} />
       <Route path="manage-applicants" element={<ManageApplicants />} />
       <Route path="profile" element={<Profile />} /> 
+      <Route path="/forget-password" element={<ForgetPassword />} />
+      <Route path="reset-password/:token" element={<ResetPassword />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

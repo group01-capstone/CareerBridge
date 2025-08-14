@@ -1,3 +1,7 @@
+html, body, #root {
+  height: 100%;
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -40,6 +44,161 @@ body {
   box-shadow: none;
 }
 
+/*reset page styles*/
+/* Change Password Page Styles */
+/* ===== Change Password Page - Modern Stylish Theme ===== */
+
+.change-password-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(to bottom right, #e8afdb, #f0cae5, #f9e6f5);
+  padding: 40px 20px;
+}
+
+/* Heading */
+.form-title {
+  font-size: 2.8rem;
+  color: #5e2975;
+  font-weight: 700;
+  margin-bottom: 40px;
+  text-shadow: 0 2px 6px rgba(125, 60, 152, 0.15);
+  letter-spacing: 1.1px;
+  text-align: center;
+}
+
+/* Form container */
+.full-width-form {
+  width: 100%;
+  max-width: 550px;
+}
+
+/* Label */
+.form-label {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: #6a1b9a;
+  margin-bottom: 12px;
+}
+
+/* Input fields */
+.form-control {
+  border-radius: 30px;
+  border: 2px solid #eec5e6;
+  padding: 18px 24px;
+  font-size: 1.1rem;
+  background-color: #fdf0fd;
+  color: #4a235a;
+  box-shadow: inset 0 1px 6px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.form-control::placeholder {
+  color: #b799d9;
+  font-weight: 500;
+}
+
+.form-control:focus {
+  border-color: #e399d0;
+  box-shadow: 0 0 8px rgba(227, 153, 208, 0.6);
+  outline: none;
+  background-color: #fdf1f9;
+  color: #4a235a;
+}
+
+/* Submit button */
+button.w-100 {
+  margin-top: 24px;
+  background: linear-gradient(90deg, #8d2865, #c03fa2);
+  box-shadow: 0 6px 14px rgba(125, 60, 152, 0.25);
+  border-radius: 40px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #f2eff3;
+  padding: 16px 0;
+  border: none;
+  cursor: pointer;
+  transition: background 0.4s ease, transform 0.25s ease;
+}
+
+button.w-100:hover:not(:disabled) {
+  background: linear-gradient(90deg, #c847aa, #712150);
+  transform: scale(1.05);
+}
+
+button.w-100:disabled {
+  background: #eed2e8;
+  cursor: not-allowed;
+  box-shadow: none;
+  color: #7e5e7e;
+}
+
+/* Alert messages */
+.alert {
+  margin-top: 30px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 1.1rem;
+  padding: 18px 24px;
+  box-shadow: 0 6px 14px rgba(125, 60, 152, 0.2);
+  border: none;
+}
+
+.alert-success {
+  background-color: #e1f2e7;
+  color: #1f6c3a;
+}
+
+.alert-warning {
+  background-color: #fdf1df;
+  color: #7a5700;
+}
+
+.alert-danger {
+  background-color: #fcdede;
+  color: #842029;
+}
+
+.dark-purple-button {
+  background-color: transparent;
+  color: #5e2975; /* dark purple text */
+  border: 2px solid #5e2975;
+  border-radius: 30px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  padding: 10px 24px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(94, 41, 117, 0.2);
+}
+
+.dark-purple-button:hover {
+  background-color: #5e2975;
+  color: white;
+  transform: scale(1.05);
+  border-color: #5e2975;
+}
+
+
+
+/* Responsive adjustments */
+@media (max-width: 576px) {
+  .form-title {
+    font-size: 2rem;
+    margin-bottom: 32px;
+  }
+
+  .form-control {
+    font-size: 1rem;
+    padding: 14px 20px;
+  }
+
+  button.w-100 {
+    font-size: 1.2rem;
+    padding: 14px 0;
+  }
+}
 /* Mobile adjustments */
 @media (max-width: 992px) {
   .navbar-collapse {
@@ -219,7 +378,7 @@ body {
 
   .login-form {
     max-width: 100%;
-    width: 100%;
+    width: 70%;
     padding: 0 12px;
   }
 
@@ -723,20 +882,70 @@ body {
   flex: 1;
 }
 
+.nav-actions {
+  display: flex;
+  gap: 12px; /* space between buttons */
+}
+
+.nav-btn {
+  margin-right: 12px;
+}
+
+.nav-btn:last-child {
+  margin-right: 0;
+}
+
+.signup-form .main-btn {
+  display: block;
+  margin: 20px auto 0 auto; /* centers horizontally, adds top margin */
+ 
+  width: 100%; /* makes button responsive */
+}
+
 /* footer */
 .footer-dark {
   background-color: #1a1a1a;
   color: #ccc;
-  font-size: 0.95rem;
+  font-size: 1rem;
   width: 100%;
   margin-top: auto;
-  padding-top: 3rem;
-  padding-bottom: 2rem;
+  padding-top: 1.5rem;
+  padding-bottom: 1rem;
 }
 
-.footer-dark h5 {
+.footer-dark .container {
+  max-width: 100%;
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+/* Layout: 1 column on mobile, 4 columns from md+ */
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1fr;      /* mobile: single column */
+  gap: 1rem;
+}
+@media (min-width: 768px) {
+  .footer-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)); /* md+: 4 cols */
+    gap: 1.25rem;
+  }
+}
+
+/* No dividers; just spacing */
+.footer-block {
+  text-align: center;               /* centered on mobile */
+}
+@media (min-width: 768px) {
+  .footer-block {
+    text-align: left;               /* left on desktop */
+  }
+}
+
+.footer-dark h6 {
   color: #fff;
-  margin-bottom: 1.2rem;
+  margin-bottom: 0.8rem;
+  font-size: 1rem;
 }
 
 .footer-dark ul {
@@ -744,42 +953,49 @@ body {
   padding-left: 0;
   margin: 0;
 }
-
 .footer-dark ul li {
-  padding: 6px 0;
+  padding: 3px 0;
   cursor: pointer;
   transition: color 0.2s ease;
 }
-
 .footer-dark ul li:hover {
   color: #1abc9c;
 }
 
-.footer-dark .social-icons a {
+/* Social icons: column on mobile, row on md+ */
+.social-icons {
+  display: flex;
+  gap: 8px;
+  flex-direction: column;           /* mobile: vertical */
+  align-items: center;
+  margin-top: 0.5rem;
+}
+@media (min-width: 768px) {
+  .social-icons {
+    flex-direction: row;            /* md+: horizontal row */
+    justify-content: flex-start;
+    align-items: center;
+  }
+}
+.social-icons a {
   color: #ccc;
+  font-size: 1rem;
   transition: transform 0.3s ease, color 0.3s ease;
-  font-size: 1.25rem;
 }
-
-.footer-dark .social-icons a:hover {
+.social-icons a:hover {
   color: #1abc9c;
-  transform: scale(1.2);
-}
-
-.footer-dark .container {
-  max-width: 100%;
-  padding-left: 40px;
-  padding-right: 40px;
+  transform: scale(1.15);
 }
 
 .footer-dark .copyright {
   border-top: 1px solid #444;
-  margin-top: 2rem;
-  padding-top: 1rem;
-  font-size: 0.85rem;
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+  font-size: 0.75rem;
   color: #888;
 }
 
+/* Store buttons: always stacked; full width on mobile */
 .footer-dark .store-links .store-btn {
   display: flex;
   align-items: center;
@@ -787,26 +1003,29 @@ body {
   border-radius: 6px;
   color: #ccc;
   text-decoration: none;
-  padding: 12px 16px;
-  margin-bottom: 16px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
   transition: all 0.3s ease;
-  gap: 12px;
-  min-height: 60px;
+  gap: 8px;
+  min-height: 50px;
+  width: 100%;                      /* full width on mobile */
 }
-
+@media (min-width: 768px) {
+  .footer-dark .store-links .store-btn {
+    width: auto;                    /* natural width on desktop */
+  }
+}
 .footer-dark .store-btn:hover {
   background-color: #1abc9c;
   color: #fff;
-  transform: scale(1.04);
+  transform: scale(1.03);
 }
-
 .footer-dark .store-btn i {
-  font-size: 2rem;
+  font-size: 1.5rem;
 }
-
-
-
 /* footer ends */
+
+
 /* Responsive filter */
 .filter-panel {
   position: relative;
@@ -833,13 +1052,14 @@ body {
 
 /* Buttons responsiveness */
 @media (max-width: 576px) {
-  .job-card .main-btn {
-    width: 100%;
+   .job-cards-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
   }
 
-  .job-card .d-flex {
-    flex-direction: column;
-    align-items: stretch;
+  .job-card {
+    width: 100%;
   }
 }
 .sticky-filter {
@@ -859,3 +1079,138 @@ body {
   }
 }
 
+@media screen and (max-width: 768px) {
+  .signup-container {
+     flex-direction: column-reverse;
+    padding: 20px;
+  }
+
+  .signup-illustration {
+    order: 0; /* image first */
+    width: 100%;
+    margin-bottom: 20px;
+  }
+
+  .signup-form {
+    order: 1; /* form second */
+    width: 50%;
+  }
+}
+
+@media (max-width: 992px) {
+  .navbar-collapse {
+    display: flex !important;
+    justify-content: center !important;
+  }
+
+  .nav-links {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .nav-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+  }
+
+  .nav-btn {
+    margin: 0; /* Remove margins that may interfere */
+  }
+}
+
+@media (max-width: 767px) {
+  .row.job-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .row.job-list > [class*="col-"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 0 0 100% !important;
+  }
+
+  .job-card {
+    width: 100%;
+    margin-bottom: 1rem;
+  }
+}
+
+/* Common action button style */
+.action-btn {
+  font-weight: 500;
+  border-radius: 6px;
+  padding: 4px 14px;
+  border: none;
+  color: #fff;
+  margin-right: 8px; /* spacing between buttons */
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.action-btn:last-child {
+  margin-right: 0;
+}
+
+/* Approve button colors */
+.approve-btn {
+  background-color: #5e2975; /* Bootstrap success green */
+}
+
+.approve-btn:hover {
+  background-color: #a266c5; /* darker on hover */
+  /* box-shadow: 0 2px 6px rgba(40, 167, 69, 0.5); */
+}
+
+/* Reject button colors */
+.reject-btn {
+  background-color: #dc3545; /* Bootstrap danger red */
+}
+
+.reject-btn:hover {
+  background-color: #c82333; /* darker on hover */
+  box-shadow: 0 2px 6px rgba(220, 53, 69, 0.5);
+}
+
+/* Disabled state styling */
+.action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+
+/* Standardized form card width & look */
+.standard-form-card {
+  background-color:  #ffffff;
+  max-width: 800px;           /* ✅ consistent width across screens */
+  margin: 0 auto;
+  transition: box-shadow 0.3s ease;
+}
+
+.standard-form-card:hover {
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+}
+
+/* Inputs/selects consistent spacing & rounding */
+.standard-form-card .form-control,
+.standard-form-card .form-select,
+.standard-form-card textarea {
+  padding: 10px 14px;
+  border-radius: 6px;
+}
+
+/* Labels look crisp */
+.standard-form-card .form-label {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+/* Primary CTA look (shared) */
+.main-btn {
+  padding: 8px 20px;
+  font-weight: 600;
+  border-radius: 8px;
+}
