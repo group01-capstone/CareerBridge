@@ -14,26 +14,22 @@ import {
   Button,
 } from "react-bootstrap";
 
-const SERVER_URL = "http://localhost:5000";
+const SERVER_URL = "http://localhost:5000"; // Make sure this is pointing to your backend
 
 /* ========= Helpers ========= */
-const buildFileURL = (path) => {
-  if (!path) return "";
-  const raw = String(path).trim();
+const buildFileURL = (fileId) => {
+  if (!fileId) return "";
+  const raw = String(fileId).trim();
 
-  // already absolute
-  if (/^https?:\/\//i.test(raw)) return raw;
-
-  // keep only uploads/user_uploads part if present
-  const match = raw.match(/(?:^|\/)(uploads|user_uploads)\/.+$/i);
-  if (match) {
-    const rel = match[0].replace(/^\/?/, "");
-    return `${SERVER_URL}/${encodeURI(rel)}`;
+  // Check if it's a valid GridFS ID (24 characters long)
+  const isHex24 = /^[a-fA-F0-9]{24}$/.test(raw);
+  if (isHex24) {
+    return `${SERVER_URL}/files/${raw}`; // GridFS file serving route
   }
 
-  // otherwise assume filename in /uploads
-  const base = raw.replace(/^.*[\\/]/, "");
-  return `${SERVER_URL}/uploads/${encodeURIComponent(base)}`;
+  // Handle URLs or local paths here (if needed)
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `${SERVER_URL}/uploads/${encodeURIComponent(raw)}`;
 };
 
 /* ========= GraphQL ========= */
@@ -125,7 +121,7 @@ const ManageApplicants = () => {
   };
 
   return (
-   <div className="d-flex flex-column min-vh-100 bg-light">
+    <div className="d-flex flex-column min-vh-100 bg-light">
       <Navbar expand="lg" className="top-navbar px-3" bg="light" variant="light" sticky="top">
         <Container fluid>
           <Navbar.Brand>
@@ -318,7 +314,7 @@ const ManageApplicants = () => {
         </Accordion>
       </Container>
 
-       <div className="mt-auto">
+      <div className="mt-auto">
         <Footer />
       </div>
     </div>

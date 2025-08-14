@@ -8,10 +8,11 @@ import { gql, useMutation, useQuery } from "@apollo/client";
 import "/public/style.css";
 import "bootstrap/dist/css/bootstrap.min.css";
 
-const SERVER_URL = "http://localhost:5000";
+const SERVER_URL =
+  (typeof __SERVER_URL__ !== "undefined" && __SERVER_URL__) ||
+  "http://localhost:5000";
 
 /* ================= GraphQL ================= */
-
 const SAVE_USER_PROFILE = gql`
   mutation SaveUserProfile($input: UserProfileInput!) {
     saveUserProfile(input: $input) {
@@ -55,7 +56,6 @@ const GET_USER_PROFILE = gql`
 `;
 
 /* ============== Helpers / Lookups ============== */
-
 const omitTypename = (val) => {
   if (Array.isArray(val)) return val.map(omitTypename);
   if (val && typeof val === "object") {
@@ -66,33 +66,60 @@ const omitTypename = (val) => {
   return val;
 };
 
-async function uploadFile(file) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const response = await fetch("http://localhost:5000/upload", {
-    method: "POST",
-    body: formData,
-  });
-  if (!response.ok) throw new Error("Upload failed");
-  const data = await response.json();
-  return data.filename;
-}
-
-function lettersOnlyKeyDown(e) {
+const lettersOnlyKeyDown = (e) => {
   const allowed = ["Backspace", "Tab", "ArrowLeft", "ArrowRight", "Delete", "Home", "End"];
   const regex = /^[a-zA-Z\s'-]$/;
   if (!allowed.includes(e.key) && !regex.test(e.key)) e.preventDefault();
+};
+
+
+// Helper function to upload to GridFS and return the fileId string
+async function uploadToGridFS(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  console.log("Uploading file:", file);  // Log file details before uploading
+
+  const response = await fetch(`${SERVER_URL}/upload-gridfs`, {
+    method: "POST",
+    body: formData,
+  });
+
+  console.log("Response from server:", response);  // Log response status
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    console.error(`Upload failed: ${response.status} - ${text}`); // Detailed error logging
+    throw new Error(`Upload failed (${response.status}) ${text}`);
+  }
+
+  const data = await response.json().catch(() => ({}));
+  if (!data?.fileId) {
+    console.error("Upload failed: missing fileId");  // More detailed error logging
+    throw new Error("Upload failed: missing fileId");
+  }
+
+  console.log("File uploaded successfully:", data);  // Success log
+  return data.fileId; // Return GridFS ObjectId string
 }
 
-function getFilePath(file) {
-  if (!file) return "";
-  const raw = String(file).trim();
+
+// Function to generate URL for files stored in GridFS
+function getFileURL(val) {
+  if (!val) return "";
+  const raw = String(val).trim();
+
+  const isHex24 = /^[a-fA-F0-9]{24}$/.test(raw);
+  if (isHex24) return `${SERVER_URL}/files/${raw}`;
+
   if (/^https?:\/\//i.test(raw)) return raw;
+
   const uploadsMatch = raw.match(/(?:^|\/)uploads\/.+$/i);
   if (uploadsMatch) {
     const rel = uploadsMatch[0].replace(/^\/?/, "");
     return `${SERVER_URL}/${encodeURI(rel)}`;
   }
+
   const base = raw.replace(/^.*[\\/]/, "");
   return `${SERVER_URL}/uploads/${encodeURIComponent(base)}`;
 }
@@ -146,16 +173,14 @@ const jobMap = {
 };
 
 /* ================= Component ================= */
-
 export default function UserProfile() {
   const navigate = useNavigate();
-  const [userEmail, setUserEmail] = useState((localStorage.getItem("userEmail") || "").trim());
-
+  const [userEmail, setUserEmail] = useState(localStorage.getItem("userEmail") || "");
   const [formData, setFormData] = useState({
     firstName: "", lastName: "", email: "",
     gender: "", experienceLevel: "", mobile: "", city: "", country: "",
     educationLevel: "", customEducation: "",
-    customSkills: "",           // will hold selected option OR "Other"
+    customSkills: "",           // selected option OR "Other"
     customSkillsOther: "",      // free text when "Other"
     customJobs: "",             // selected option OR "Other"
     customJobsOther: "",        // free text when "Other"
@@ -177,24 +202,20 @@ export default function UserProfile() {
   const [saveUserProfile] = useMutation(SAVE_USER_PROFILE);
   const [updateUserProfile] = useMutation(UPDATE_USER_PROFILE);
 
-  // Normalize existing values into "Other" buckets when they don't match options
   const normalizeOtherFields = (profile) => {
     const edu = profile.educationLevel || "";
     const allowedSkills = skillsMap[edu] || [];
     const allowedJobs = jobMap[edu] || [];
-
     const normalized = { ...profile };
 
     if (normalized.customSkills && !allowedSkills.includes(normalized.customSkills)) {
       normalized.customSkillsOther = normalized.customSkills;
       normalized.customSkills = "Other";
     }
-
     if (normalized.customJobs && !allowedJobs.includes(normalized.customJobs)) {
       normalized.customJobsOther = normalized.customJobs;
       normalized.customJobs = "Other";
     }
-
     return normalized;
   };
 
@@ -209,12 +230,10 @@ export default function UserProfile() {
     } else {
       setFormData((prev) => ({ ...prev, email: userEmail }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, userEmail, navigate]);
 
   const handleChange = (e) => {
     const { name, value, files } = e.target;
-
     if (name === "resumeFile") setResumeFile(files[0]);
     else if (name === "profilePhoto") setProfilePhoto(files[0]);
     else if (name === "selfIntroVideo") setIntroVideo(files[0]);
@@ -228,7 +247,6 @@ export default function UserProfile() {
       ...formData,
       educationLevel: selected,
       customEducation: "",
-      // reset skill/job selections when education changes
       customSkills: "",
       customSkillsOther: "",
       customJobs: "",
@@ -277,7 +295,6 @@ export default function UserProfile() {
     if (formData.github && formData.github.trim() !== "" && !urlPattern.test(formData.github))
       return alert("Please enter a valid GitHub URL."), false;
 
-    // Require a selected skill/job OR provided "Other" text when "Other" chosen
     if (!formData.customSkills || (formData.customSkills === "Other" && !formData.customSkillsOther.trim())) {
       return alert("Please select a skill or provide a custom skill."), false;
     }
@@ -288,28 +305,40 @@ export default function UserProfile() {
     if (resumeFile instanceof File) {
       if (!allowedDocExt.includes(getExt(resumeFile.name))) return alert("Resume must be PDF/DOC/DOCX."), false;
     } else if (formData.resumeFile) {
-      if (!allowedDocExt.includes(getExt(formData.resumeFile))) return alert("Existing resume file type invalid."), false;
+      // now could be GridFS id; skip ext check if 24-hex
+      const isHex24 = /^[a-fA-F0-9]{24}$/.test(formData.resumeFile);
+      const ext = getExt(formData.resumeFile);
+      if (!isHex24 && ext && !allowedDocExt.includes(ext)) return alert("Existing resume file type invalid."), false;
     } else return alert("Please upload your resume."), false;
 
     if (coverLetterFile instanceof File) {
       if (!allowedDocExt.includes(getExt(coverLetterFile.name))) return alert("Cover Letter must be PDF/DOC/DOCX."), false;
     } else if (formData.coverLetterFile) {
-      const ext = getExt(formData.coverLetterFile);
-      if (ext && !allowedDocExt.includes(ext)) return alert("Existing cover letter file type invalid."), false;
+      const isHex24 = /^[a-fA-F0-9]{24}$/.test(formData.coverLetterFile);
+      const ext = formData.coverLetterFile && formData.coverLetterFile.includes(".")
+        ? formData.coverLetterFile.split(".").pop().toLowerCase()
+        : "";
+      if (!isHex24 && ext && !allowedDocExt.includes(ext)) return alert("Existing cover letter file type invalid."), false;
     }
 
     if (profilePhoto instanceof File) {
       if (!allowedProfilePhotoExt.includes(getExt(profilePhoto.name))) return alert("Profile Photo must be jpeg/jpg/png."), false;
     } else if (formData.profilePhoto) {
-      const ext = getExt(formData.profilePhoto);
-      if (ext && !allowedProfilePhotoExt.includes(ext)) return alert("Existing profile photo type invalid."), false;
+      const isHex24 = /^[a-fA-F0-9]{24}$/.test(formData.profilePhoto);
+      const ext = formData.profilePhoto && formData.profilePhoto.includes(".")
+        ? formData.profilePhoto.split(".").pop().toLowerCase()
+        : "";
+      if (!isHex24 && ext && !allowedProfilePhotoExt.includes(ext)) return alert("Existing profile photo type invalid."), false;
     } else return alert("Please upload a profile photo."), false;
 
     if (introVideo instanceof File) {
       if (!allowedVideoExt.includes(getExt(introVideo.name))) return alert("Self Intro Video format invalid."), false;
     } else if (formData.selfIntroVideo) {
-      const ext = getExt(formData.selfIntroVideo);
-      if (ext && !allowedVideoExt.includes(ext)) return alert("Existing self intro video type invalid."), false;
+      const isHex24 = /^[a-fA-F0-9]{24}$/.test(formData.selfIntroVideo);
+      const ext = formData.selfIntroVideo && formData.selfIntroVideo.includes(".")
+        ? formData.selfIntroVideo.split(".").pop().toLowerCase()
+        : "";
+      if (!isHex24 && ext && !allowedVideoExt.includes(ext)) return alert("Existing self intro video type invalid."), false;
     }
 
     if (formData.educationLevel === "Other" && (!formData.customEducation || formData.customEducation.trim() === ""))
@@ -323,17 +352,18 @@ export default function UserProfile() {
     if (!validateFields()) return;
 
     try {
+      // Start with whatever is already there (may be GridFS id or old path)
       let resume = formData.resumeFile;
       let photo = formData.profilePhoto;
       let video = formData.selfIntroVideo;
       let coverLetter = formData.coverLetterFile || "";
 
-      if (resumeFile instanceof File) resume = await uploadFile(resumeFile);
-      if (profilePhoto instanceof File) photo = await uploadFile(profilePhoto);
-      if (introVideo instanceof File) video = await uploadFile(introVideo);
-      if (coverLetterFile instanceof File) coverLetter = await uploadFile(coverLetterFile);
+      // NEW: upload to GridFS if user selected a new file
+      if (resumeFile instanceof File) resume = await uploadToGridFS(resumeFile);
+      if (profilePhoto instanceof File) photo = await uploadToGridFS(profilePhoto);
+      if (introVideo instanceof File) video = await uploadToGridFS(introVideo);
+      if (coverLetterFile instanceof File) coverLetter = await uploadToGridFS(coverLetterFile);
 
-      // If "Other" selected, send the text entered in the *Other* field
       const normalizedCustomSkills =
         formData.customSkills === "Other" ? formData.customSkillsOther.trim() : formData.customSkills;
 
@@ -344,9 +374,9 @@ export default function UserProfile() {
         ...formData,
         customSkills: normalizedCustomSkills,
         customJobs: normalizedCustomJobs,
-        // do not send the helper fields to backend
         customSkillsOther: undefined,
         customJobsOther: undefined,
+        // Store GridFS ids (string)
         resumeFile: typeof resume === "string" ? resume : "",
         profilePhoto: typeof photo === "string" ? photo : "",
         selfIntroVideo: typeof video === "string" ? video : "",
@@ -371,9 +401,6 @@ export default function UserProfile() {
     }
   };
 
-  const skillsOptions = skillsMap[formData.educationLevel] || [];
-  const jobOptions = jobMap[formData.educationLevel] || [];
-
   return (
     <div className="bg-light min-vh-100">
       <Navbar expand="lg" className="top-navbar px-3 shadow-sm" bg="light" variant="light" sticky="top">
@@ -394,7 +421,7 @@ export default function UserProfile() {
       </Navbar>
 
       <Container className="py-5" style={{ maxWidth: "1100px" }}>
-        <h2 className="dashboard-title text-center fw-bold mb-4">User Profile</h2>
+                <h2 className="dashboard-title text-center fw-bold mb-4">User Profile</h2>
         <Card className="p-4 shadow-lg border-0 bg-white rounded">
           <Form onSubmit={handleSubmit} noValidate>
             {/* Personal Details */}
@@ -639,7 +666,7 @@ export default function UserProfile() {
               />
               {formData.resumeFile && typeof formData.resumeFile === "string" && (
                 <div className="mt-2">
-                  <a href={getFilePath(formData.resumeFile)} target="_blank" rel="noreferrer">View Uploaded Resume</a>
+                  <a href={getFileURL(formData.resumeFile)} target="_blank" rel="noreferrer">View Uploaded Resume</a>
                 </div>
               )}
             </Form.Group>
@@ -654,7 +681,7 @@ export default function UserProfile() {
               />
               {formData.coverLetterFile && typeof formData.coverLetterFile === "string" && (
                 <div className="mt-2">
-                  <a href={getFilePath(formData.coverLetterFile)} target="_blank" rel="noreferrer">View Uploaded Cover Letter</a>
+                  <a href={getFileURL(formData.coverLetterFile)} target="_blank" rel="noreferrer">View Uploaded Cover Letter</a>
                 </div>
               )}
             </Form.Group>
@@ -670,7 +697,7 @@ export default function UserProfile() {
               {formData.profilePhoto && typeof formData.profilePhoto === "string" && (
                 <div className="mt-2">
                   <img
-                    src={getFilePath(formData.profilePhoto)}
+                    src={getFileURL(formData.profilePhoto)}
                     alt="Profile"
                     style={{ maxWidth: "150px", borderRadius: "8px", border: "1px solid #ddd" }}
                   />
@@ -689,7 +716,7 @@ export default function UserProfile() {
               {formData.selfIntroVideo && typeof formData.selfIntroVideo === "string" && (
                 <div className="mt-3">
                   <video
-                    src={getFilePath(formData.selfIntroVideo)}
+                    src={getFileURL(formData.selfIntroVideo)}
                     controls
                     style={{ maxWidth: "100%", maxHeight: "300px" }}
                   >
@@ -712,3 +739,5 @@ export default function UserProfile() {
     </div>
   );
 }
+
+        
